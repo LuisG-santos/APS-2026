@@ -15,11 +15,13 @@ datasource db {
 }
 
 
-model Alagamento {
-  id                Int      @id @default(autoincrement())
-  sensor            String
-  timestamp         DateTime
-  nivelCorregoCm    Float
-  chuvaAcumuladaMm  Float
-  createdAt         DateTime @default(now())
+model QualidadeAr {
+  id            Int      @id @default(autoincrement())
+  estacao        String
+  timestamp     DateTime
+  mp25          Float
+  co            Float
+  no3           Float
+  temperatura   Float
+  createdAt     DateTime @default(now())
 }

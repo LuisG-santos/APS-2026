@@ -4,21 +4,23 @@ import { PrismaClient } from './generated/prisma/client.js'
 
 const app = express()
 const prisma = new PrismaClient()
-const port = 3000
+const port = 3002
 
 app.use(express.json())
 
 app.post('/send', (req: Request, res: Response) => {
-	const { sensor, timestamp, nivelCorregoCm, chuvaAcumuladaMm } = req.body
+	const { estacao, timestamp, mp25, co, no3, temperatura } = req.body
 
 	if (
-		typeof sensor !== 'string' ||
+		typeof estacao !== 'string' ||
 		typeof timestamp !== 'string' ||
-		typeof nivelCorregoCm !== 'number' ||
-		typeof chuvaAcumuladaMm !== 'number'
+		typeof mp25 !== 'number' ||
+		typeof co !== 'number' ||
+		typeof no3 !== 'number' ||
+		typeof temperatura !== 'number'
 	) {
 		res.status(400).json({
-			error: 'sensor, timestamp, nivelCorregoCm e chuvaAcumuladaMm sao obrigatorios'
+			error: 'estação, timestamp, mp25, co, no3 e temperatura sao obrigatorios'
 		})
 		return
 	}
@@ -30,20 +32,22 @@ app.post('/send', (req: Request, res: Response) => {
 		return
 	}
 
-	prisma.alagamento.create({
+	prisma.qualidadeAr.create({
 		data: {
-			sensor,
+			estacao,
 			timestamp: data,
-			nivelCorregoCm,
-			chuvaAcumuladaMm
+			mp25,
+			co,
+			no3,
+			temperatura
 		}
 	})
-		.then((alagamento) => res.status(201).json(alagamento))
+		.then((qualidadeAr) => res.status(201).json(qualidadeAr))
 		.catch((err) => {
 			console.error(err)
 			res.status(500).json({ error: 'erro ao salvar a leitura' })
 		})
-	
+
 })
 
 app.listen(port, () => {
