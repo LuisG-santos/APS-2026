@@ -1,16 +1,16 @@
 services:
   db:
     image: postgres:16
-    container_name: alagamento-postgres
+    container_name: transito-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: alagamento
+      POSTGRES_DB: transito
     ports:
-      - "5433:5432"
+      - "5435:5432"
     volumes:
-      - alagamento-db-data:/var/lib/postgresql/data
+      - transito-db-data:/var/lib/postgresql/data
 
 volumes:
-  alagamento-db-data:
+  transito-db-data:
