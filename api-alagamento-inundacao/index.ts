@@ -4,7 +4,7 @@ import { PrismaClient } from './generated/prisma/client.js'
 
 const app = express()
 const prisma = new PrismaClient()
-const port = 3000
+const port = 3001
 
 app.use(express.json())
 
