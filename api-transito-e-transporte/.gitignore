@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+
+# Environment variables and local secrets
+.env
+.env.*
+!.env.example
+
+# Build and generated output
+dist/
+build/
+out/
+*.tsbuildinfo
+*.js.map
+*.d.ts
+*.d.ts.map
+/generated/prisma/
+
+# Local databases
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Test and coverage output
+coverage/
+.nyc_output/
+
+# Logs and runtime files
+logs/
+*.log
+*.pid
+*.pid.lock
+
+# Package manager and tool caches
+.npm/
+.eslintcache
+.cache/
+.parcel-cache/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local editor settings
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
