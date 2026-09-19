@@ -7,7 +7,7 @@ RUN npm ci
 
 COPY prisma ./prisma
 COPY prisma.config.ts tsconfig.json index.ts ./
-RUN npm run build && npm prune --omit=dev
+RUN DATABASE_URL=postgresql://prisma:prisma@localhost:5432/prisma npm run build && npm prune --omit=dev
 
 FROM node:22-bookworm-slim AS runtime
 
