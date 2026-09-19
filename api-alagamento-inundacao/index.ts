@@ -8,7 +8,11 @@ const port = 3001
 
 app.use(express.json())
 
-app.post('/send', (req: Request, res: Response) => {
+app.get( '/get/alagamento', async(req: Request, res: Response)=> {
+	res.json( await prisma.alagamento.findMany())
+})
+
+app.post('/send/alagamento', (req: Request, res: Response) => {
 	const { sensor, timestamp, nivelCorregoCm, chuvaAcumuladaMm } = req.body
 
 	if (

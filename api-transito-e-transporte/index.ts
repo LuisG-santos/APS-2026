@@ -8,7 +8,11 @@ const port = 3003
 
 app.use(express.json())
 
-app.post('/send', (req: Request, res: Response) => {
+app.get('get/transito', async(req: Request, res: Response)=>{
+	res.json(await prisma.transito.findMany())
+})
+
+app.post('/send/transito', (req: Request, res: Response) => {
 	const { veiculo, timestamp, posicao, velocidade, ocupacao } = req.body
 
 	if (
