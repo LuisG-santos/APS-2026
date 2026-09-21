@@ -4,9 +4,23 @@ import { PrismaClient } from './generated/prisma/client.js'
 
 const app = express()
 const prisma = new PrismaClient()
-const port = 3003
+const port = Number(process.env.PORT ?? 3003)
 
 app.use(express.json())
+
+app.get('/health/live', (_req: Request, res: Response) => {
+	res.status(200).json({ status: 'ok' })
+})
+
+app.get('/health/ready', async (_req: Request, res: Response) => {
+	try {
+		await prisma.$queryRaw`SELECT 1`
+		res.status(200).json({ status: 'ready' })
+	} catch (error) {
+		console.error(error)
+		res.status(503).json({ status: 'unavailable' })
+	}
+})
 
 app.get('/get/transito', async(req: Request, res: Response)=>{
 	res.json(await prisma.transito.findMany())
