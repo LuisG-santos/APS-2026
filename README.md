@@ -84,6 +84,38 @@ Invoke-RestMethod "http://localhost:3003/health/ready"
 - `/health/live` confirma que a API esta em execucao.
 - `/health/ready` confirma que a API tambem consegue consultar seu banco PostgreSQL.
 
+## Cliente conteinerizado
+
+O requisito 13 e atendido por um `client` leve em cada pilha Compose, nao por um cliente unico global.
+
+- Pilha de alagamento: o `client` chama `http://api:3001/health/ready` e `http://api:3001/get/alagamento`.
+- Pilha de qualidade do ar: o `client` chama `http://api:3002/health/ready` e `http://api:3002/get/qualidade-ar`.
+- Pilha de transito: o `client` chama `http://api:3003/health/ready` e `http://api:3003/get/transito`.
+
+Esses enderecos usam o DNS interno Docker (`api`) dentro de cada rede Compose, sem `localhost`, comprovando consumo pela pilha conteinerizada.
+
+Para demonstrar:
+
+```powershell
+# No diretorio da API desejada
+docker compose up --build -d
+docker compose ps -a
+docker compose logs client
+```
+
+Para reexecutar manualmente o cliente leve:
+
+```powershell
+Set-Location api-alagamento-inundacao
+docker compose run --rm client
+
+Set-Location ..\api-qualidade-do-ar
+docker compose run --rm client
+
+Set-Location ..\api-transito-e-transporte
+docker compose run --rm client
+```
+
 ## Endpoints e exemplos
 
 Os exemplos abaixo usam `Invoke-RestMethod`, recomendado no PowerShell porque serializa JSON corretamente.
@@ -212,3 +244,19 @@ docker compose config
 ```
 
 O comando de inspecao da imagem deve retornar `node`.
+
+## Roteiro da checklist
+
+1. Um Dockerfile por servico: confirme os tres Dockerfiles, um por API.
+2. Multi-stage: confirme estagios `build`, `migrate`, `production-dependencies` e `runtime` nos Dockerfiles.
+3. Imagem final enxuta: confirme que o runtime executa `dist/index.js` e nao depende do fonte TypeScript.
+4. Usuario nao-root: `docker image inspect aps-alagamento:1.0.0 --format '{{.Config.User}}'` e equivalente para as outras APIs; resultado esperado `node`.
+5. Imagens versionadas por tag: confirme `aps-alagamento:1.0.0`, `aps-qualidade-ar:1.0.0`, `aps-transito:1.0.0`.
+6. `.dockerignore`: confirme existencia em cada API, excluindo `node_modules`, `generated`, `.env` e artefatos locais.
+7. Compose sobe pilha completa: confirme servicos `db`, `migrate`, `api`, `client` em cada `docker-compose.yml`.
+8. Comunicacao por nome de servico: confirme URLs internas com `db:5432` e `api:<porta>`.
+9. Persistencia por volume: confirme volumes nomeados (`alagamento-db-data`, `qualidade-ar-db-data`, `transito-db-data`) e teste com `docker compose restart db`.
+10. Configuracao por variaveis de ambiente: confirme uso de `.env` e placeholders em `docker-compose.yml`.
+11. Sem credenciais no codigo-fonte: mantenha segredo real somente em `.env`; `POSTGRES_PASSWORD=change-me` fica apenas no `.env.example`.
+12. Liveness e readiness distintos: valide `/health/live` e `/health/ready` nas tres APIs.
+13. Cliente leve consumindo pela pilha: valide `docker compose run --rm client` nas tres APIs e confira chamadas internas para `http://api:<porta>`.
