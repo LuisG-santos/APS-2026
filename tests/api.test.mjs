@@ -201,7 +201,26 @@ for (const api of apis) {
     assert.equal((await fetch(`${api.url}/health/live`)).status, 200)
     assert.equal((await fetch(`${api.url}/health/ready`)).status, 200)
   })
+
+  test(`${api.route}: rejeita JSON com formato ou tipos incorretos sem gravar`, async () => {
+    const count = await api.prisma[api.model].count()
+    const field = api.model === 'alagamento' ? 'nivelCorregoCm' : api.model === 'qualidadeAr' ? 'mp25' : 'velocidade'
+    for (const payload of [[api.payload], { ...api.payload, timestamp: 123 },
+      ...['12.5', null, true, {}].map(value => ({ ...api.payload, timestamp: '2026-01-15T09:30:00Z', [field]: value }))]) {
+      assert.equal((await send(api, payload)).status, 400)
+    }
+    assert.equal(await api.prisma[api.model].count(), count)
+  })
 }
+
+test('cadastro de sensores: rejeita corpos e tipos incorretos em tempo de execucao', async () => {
+  const count = await apis[2].prisma.sensorTransito.count()
+  for (const payload of [[], [{ nome: 'radar', tipo: 'RADAR' }], { nome: 123, tipo: 'RADAR' },
+    { nome: `${prefix}-tipo-invalido`, tipo: ['RADAR'] }, { nome: `${prefix}-tipo-invalido`, tipo: {} }]) {
+    assert.equal((await cadastrarSensor(payload)).status, 400)
+  }
+  assert.equal(await apis[2].prisma.sensorTransito.count(), count)
+})
 
 test('qualidade-ar: sensor e obrigatorio e nao aceita identificacao vazia', async () => {
   const api = apis[1]
