@@ -1,73 +1,10 @@
-import "dotenv/config"
-import express, { type Request, type Response } from 'express'
-import { PrismaClient } from './generated/prisma/client.js'
+import 'dotenv/config'
+import { PrismaClient } from '@prisma/client'
+import { createApp } from './app.js'
 
-const app = express()
 const prisma = new PrismaClient()
 const port = Number(process.env.PORT ?? 3002)
 
-app.use(express.json())
-
-app.get('/health/live', (_req: Request, res: Response) => {
-	res.status(200).json({ status: 'ok' })
-})
-
-app.get('/health/ready', async (_req: Request, res: Response) => {
-	try {
-		await prisma.$queryRaw`SELECT 1`
-		res.status(200).json({ status: 'ready' })
-	} catch (error) {
-		console.error(error)
-		res.status(503).json({ status: 'unavailable' })
-	}
-})
-
-app.get( '/get/qualidade-ar', async(req: Request, res: Response)=> {
-	res.json( await prisma.qualidadeAr.findMany())
-})
-
-app.post('/send/qualidade-ar', (req: Request, res: Response) => {
-	const { estacao, timestamp, mp25, co, no3, temperatura } = req.body
-
-	if (
-		typeof estacao !== 'string' ||
-		typeof timestamp !== 'string' ||
-		typeof mp25 !== 'number' ||
-		typeof co !== 'number' ||
-		typeof no3 !== 'number' ||
-		typeof temperatura !== 'number'
-	) {
-		res.status(400).json({
-			error: 'estação, timestamp, mp25, co, no3 e temperatura sao obrigatorios'
-		})
-		return
-	}
-
-	const data = new Date(timestamp)
-
-	if (Number.isNaN(data.getTime())) {
-		res.status(400).json({ error: 'timestamp invalido' })
-		return
-	}
-
-	prisma.qualidadeAr.create({
-		data: {
-			estacao,
-			timestamp: data,
-			mp25,
-			co,
-			no3,
-			temperatura
-		}
-	})
-		.then((qualidadeAr) => res.status(201).json(qualidadeAr))
-		.catch((err) => {
-			console.error(err)
-			res.status(500).json({ error: 'erro ao salvar a leitura' })
-		})
-
-})
-
-app.listen(port, () => {
+createApp(prisma).listen(port, () => {
 	console.log(`API rodando em http://localhost:${port}`)
 })

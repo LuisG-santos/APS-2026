@@ -7,10 +7,17 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY package.json package-lock.json ./
+COPY api-alagamento-inundacao/package.json ./api-alagamento-inundacao/
+COPY api-qualidade-do-ar/package.json ./api-qualidade-do-ar/
+COPY api-transito-e-transporte/package.json ./api-transito-e-transporte/
 RUN npm ci
 
 COPY prisma ./prisma
-COPY prisma.config.ts tsconfig.json index.ts ./
+COPY tsconfig.json ./
+COPY shared ./shared
+COPY api-alagamento-inundacao ./api-alagamento-inundacao
+COPY api-qualidade-do-ar ./api-qualidade-do-ar
+COPY api-transito-e-transporte ./api-transito-e-transporte
 RUN chown -R node:node /app
 
 USER node
@@ -34,10 +41,10 @@ WORKDIR /app
 
 COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
-COPY --from=build --chown=node:node /app/generated ./dist/generated
+COPY --from=build --chown=node:node /app/package.json ./package.json
 
 USER node
 
 EXPOSE 3001
 
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/api-alagamento-inundacao/index.js"]

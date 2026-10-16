@@ -1,0 +1,16 @@
+node_modules/
+dist/
+generated/
+.env
+.env.*
+!.env.example
+*.log
+*.tsbuildinfo
+__pycache__/
+*.pyc
+coverage/
+.DS_Store
+Thumbs.db
+/alagamento.csv
+/qualidade-ar.csv
+/transito.csv

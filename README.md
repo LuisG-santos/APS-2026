@@ -1,262 +1,128 @@
-# APS 2026 - APIs de Monitoramento Urbano
+# APS 2026 - Monitoramento Urbano
 
-Monorepo com tres APIs independentes de monitoramento urbano. Cada API usa Node.js, Express, TypeScript, Prisma e PostgreSQL, com imagem Docker, Compose, rede, banco e volume proprios.
+Tres APIs em Node.js, Express, TypeScript e Prisma conectadas ao mesmo banco PostgreSQL 16.
 
-## APIs
+| API | Porta padrao | Consulta | Envio |
+|---|---:|---|---|
+| Alagamento e inundacao | 3001 | `/get/alagamento` | `/send/alagamento` |
+| Qualidade do ar | 3002 | `/get/qualidade-ar` | `/send/qualidade-ar` |
+| Transito e transporte | 3003 | `/get/transito` | `/send/transito` |
 
-| API | Diretorio | API | PostgreSQL | Banco | Volume |
-|---|---|---:|---:|---|---|
-| Alagamento e inundacao | `api-alagamento-inundacao/` | 3001 | 5433 | `alagamento` | `alagamento-db-data` |
-| Qualidade do ar | `api-qualidade-do-ar/` | 3002 | 5434 | `qualidade_ar` | `qualidade-ar-db-data` |
-| Transito e transporte | `api-transito-e-transporte/` | 3003 | 5435 | `transito` | `transito-db-data` |
+## Executar com Docker
 
-## Arquitetura Docker
-
-Cada diretorio de API possui uma pilha Compose independente com quatro servicos:
-
-- `db`: PostgreSQL 16 com volume nomeado e healthcheck.
-- `migrate`: aplica as migracoes Prisma depois que o banco fica saudavel.
-- `api`: inicia somente depois das migracoes e possui healthcheck de readiness.
-- `client`: cliente leve `curl` que acessa a API pela rede Docker.
-
-Os servicos internos usam os nomes `db` e `api`; a conexao da aplicacao e feita por `db:5432`, nunca por `localhost`. As portas `localhost` existem apenas para testes a partir da maquina host.
-
-Cada `Dockerfile` usa multi-stage build, gera o cliente Prisma em Linux, executa como o usuario nao-root `node` e mantem codigo TypeScript e ferramentas de build fora da imagem final.
-
-## Subir as tres APIs
-
-Cada API e iniciada individualmente no seu diretorio. Os valores padrao de porta permitem manter as tres pilhas ativas ao mesmo tempo.
+Na raiz do projeto:
 
 ```powershell
-Set-Location api-alagamento-inundacao
 Copy-Item .env.example .env
-docker compose up --build -d
-
-Set-Location ..\api-qualidade-do-ar
-Copy-Item .env.example .env
-docker compose up --build -d
-
-Set-Location ..\api-transito-e-transporte
-Copy-Item .env.example .env
-docker compose up --build -d
-```
-
-Antes de subir cada pilha, altere `POSTGRES_PASSWORD` no respectivo `.env`. O arquivo `.env` e local e ignorado pelo Git.
-
-### Variaveis de ambiente
-
-Cada `.env.example` define:
-
-```dotenv
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=change-me
-POSTGRES_DB=nome_do_banco
-DB_PORT=porta_do_postgres
-API_PORT=porta_da_api
-```
-
-`DB_PORT` e `API_PORT` permitem trocar portas publicadas caso estejam ocupadas, sem alterar o Compose. A porta interna do banco permanece `5432`.
-
-## Verificar a pilha
-
-Execute os comandos no diretorio da API que deseja verificar:
-
-```powershell
-docker compose ps -a
-docker compose logs migrate client
-```
-
-O resultado esperado e `db` e `api` saudaveis, com `migrate` e `client` finalizados em `Exited (0)`.
-
-Healthchecks pela maquina host:
-
-```powershell
-Invoke-RestMethod "http://localhost:3001/health/live"
-Invoke-RestMethod "http://localhost:3001/health/ready"
-
-Invoke-RestMethod "http://localhost:3002/health/live"
-Invoke-RestMethod "http://localhost:3002/health/ready"
-
-Invoke-RestMethod "http://localhost:3003/health/live"
-Invoke-RestMethod "http://localhost:3003/health/ready"
-```
-
-- `/health/live` confirma que a API esta em execucao.
-- `/health/ready` confirma que a API tambem consegue consultar seu banco PostgreSQL.
-
-## Cliente conteinerizado
-
-O requisito 13 e atendido por um `client` leve em cada pilha Compose, nao por um cliente unico global.
-
-- Pilha de alagamento: o `client` chama `http://api:3001/health/ready` e `http://api:3001/get/alagamento`.
-- Pilha de qualidade do ar: o `client` chama `http://api:3002/health/ready` e `http://api:3002/get/qualidade-ar`.
-- Pilha de transito: o `client` chama `http://api:3003/health/ready` e `http://api:3003/get/transito`.
-
-Esses enderecos usam o DNS interno Docker (`api`) dentro de cada rede Compose, sem `localhost`, comprovando consumo pela pilha conteinerizada.
-
-Para demonstrar:
-
-```powershell
-# No diretorio da API desejada
+# Edite POSTGRES_PASSWORD e os demais valores se necessario.
 docker compose up --build -d
 docker compose ps -a
-docker compose logs client
 ```
 
-Para reexecutar manualmente o cliente leve:
+O Compose inicia um banco `aps`, um servico `migrate`, as tres APIs e tres clientes de verificacao. Todas as APIs recebem a mesma `DATABASE_URL`, usando o endereco interno `db:5432`. Elas iniciam somente depois que as migrations forem concluidas.
+
+O schema e todo o historico de migrations ficam em `prisma/`. O volume `aps-db-data` guarda as tabelas `Alagamento`, `QualidadeAr` e `Transito`. Os Dockerfiles usam a raiz como contexto de build, executam em multiplos estagios e usam o usuario `node` no runtime.
+
+As portas publicadas podem ser alteradas no `.env`: `DB_PORT`, `ALAGAMENTO_API_PORT`, `QUALIDADE_AR_API_PORT` e `TRANSITO_API_PORT`.
 
 ```powershell
-Set-Location api-alagamento-inundacao
-docker compose run --rm client
-
-Set-Location ..\api-qualidade-do-ar
-docker compose run --rm client
-
-Set-Location ..\api-transito-e-transporte
-docker compose run --rm client
+docker compose logs migrate client-alagamento client-qualidade-ar client-transito
+Invoke-RestMethod http://localhost:3001/health/ready
+Invoke-RestMethod http://localhost:3002/health/ready
+Invoke-RestMethod http://localhost:3003/health/ready
 ```
 
-## Endpoints e exemplos
+Cada API possui `/health/live` para verificar o processo e `/health/ready` para verificar a conexao com o banco.
 
-Os exemplos abaixo usam `Invoke-RestMethod`, recomendado no PowerShell porque serializa JSON corretamente.
+## Timestamp das leituras
 
-### Alagamento e inundacao
+O sensor gera `timestamp` imediatamente antes de enviar a requisicao. Esse valor e obrigatorio no POST, fica salvo no banco e e retornado no GET. Use ISO 8601 com fuso, como `2026-10-09T00:30:00.123Z` ou `2026-10-08T21:30:00.123-03:00`. Horarios sem fuso e datas invalidas retornam HTTP 400.
 
-Base URL: `http://localhost:3001`
+`createdAt` registra o momento de gravacao no banco e e separado do `timestamp` do sensor.
 
-| Metodo | Rota | Descricao |
-|---|---|---|
-| GET | `/health/live` | Verifica se a API esta ativa. |
-| GET | `/health/ready` | Verifica API e banco. |
-| GET | `/get/alagamento` | Lista leituras persistidas. |
-| POST | `/send/alagamento` | Cria uma leitura de nivel e chuva. |
+## Enviar leituras
+
+Os arquivos `req.py` simulam os sensores e geram o timestamp no momento de cada envio:
 
 ```powershell
-$body = @{
-  sensor = "sensor-01"
-  timestamp = "2026-09-21T12:00:00.000Z"
-  nivelCorregoCm = 120.5
-  chuvaAcumuladaMm = 35.2
-} | ConvertTo-Json
-
-Invoke-RestMethod `
-  -Method Post `
-  -Uri "http://localhost:3001/send/alagamento" `
-  -ContentType "application/json" `
-  -Body $body
-
-Invoke-RestMethod "http://localhost:3001/get/alagamento"
+python api-alagamento-inundacao/req.py
+python api-qualidade-do-ar/req.py
+python api-transito-e-transporte/req.py
 ```
 
-### Qualidade do ar
+Defina `API_URL` para alterar o destino de um simulador, por exemplo `$env:API_URL = "http://localhost:3002"`.
 
-Base URL: `http://localhost:3002`
+Alagamento:
 
-| Metodo | Rota | Descricao |
-|---|---|---|
-| GET | `/health/live` | Verifica se a API esta ativa. |
-| GET | `/health/ready` | Verifica API e banco. |
-| GET | `/get/qualidade-ar` | Lista leituras persistidas. |
-| POST | `/send/qualidade-ar` | Cria uma leitura ambiental. |
+```json
+{
+    "sensor": "sensor-01",
+    "timestamp": "2026-10-09T00:30:00.123Z",
+    "nivelCorregoCm": 120.5,
+    "chuvaAcumuladaMm": 35.2
+}
+```
+
+Qualidade do ar exige `sensor` para identificar o equipamento e `estacao` para identificar o local:
+
+```json
+{
+    "sensor": "sensor-ar-01",
+    "estacao": "estacao-01",
+    "timestamp": "2026-10-09T00:30:00.123Z",
+    "mp25": 35.2,
+    "co": 0.8,
+    "no3": 12.4,
+    "temperatura": 27.5
+}
+```
+
+Transito:
+
+```json
+{
+    "timestamp": "2026-10-09T00:30:00.123Z",
+    "posicao": "-23.5505,-46.6333",
+    "velocidade": 42.5,
+    "ocupacao": 0.75
+}
+```
+
+O campo `veiculo` foi removido do modelo, da tabela e das respostas de transito.
+
+## Desenvolvimento e testes
+
+Use Node.js 22 ou superior. Para executar localmente fora dos containers, ajuste `DATABASE_URL` no `.env` e rode:
 
 ```powershell
-$body = @{
-  estacao = "estacao-01"
-  timestamp = "2026-09-21T12:00:00.000Z"
-  mp25 = 35.2
-  co = 0.8
-  no3 = 12.4
-  temperatura = 27.5
-} | ConvertTo-Json
-
-Invoke-RestMethod `
-  -Method Post `
-  -Uri "http://localhost:3002/send/qualidade-ar" `
-  -ContentType "application/json" `
-  -Body $body
-
-Invoke-RestMethod "http://localhost:3002/get/qualidade-ar"
+npm ci
+docker compose up -d db
+npm run db:migrate
+npm run build
 ```
 
-### Transito e transporte
-
-Base URL: `http://localhost:3003`
-
-| Metodo | Rota | Descricao |
-|---|---|---|
-| GET | `/health/live` | Verifica se a API esta ativa. |
-| GET | `/health/ready` | Verifica API e banco. |
-| GET | `/get/transito` | Lista leituras persistidas. |
-| POST | `/send/transito` | Cria uma leitura de veiculo. |
+Em tres terminais:
 
 ```powershell
-$body = @{
-  veiculo = "ABC-1234"
-  timestamp = "2026-09-21T12:00:00.000Z"
-  posicao = "-23.5505,-46.6333"
-  velocidade = 42.5
-  ocupacao = 0.75
-} | ConvertTo-Json
-
-Invoke-RestMethod `
-  -Method Post `
-  -Uri "http://localhost:3003/send/transito" `
-  -ContentType "application/json" `
-  -Body $body
-
-Invoke-RestMethod "http://localhost:3003/get/transito"
+npm run dev:alagamento
+npm run dev:qualidade-ar
+npm run dev:transito
 ```
 
-## Persistencia e operacao
-
-Para parar uma pilha sem apagar os registros do banco:
+Os testes usam um banco PostgreSQL separado e exigem `TEST_DATABASE_URL` com migrations aplicadas:
 
 ```powershell
-docker compose down
+docker compose exec db sh -c 'createdb -U "$POSTGRES_USER" aps_test'
+$env:TEST_DATABASE_URL = "postgresql://postgres:change-me@localhost:5433/aps_test"
+$env:DATABASE_URL = $env:TEST_DATABASE_URL
+npm run db:migrate
+npm test
+Remove-Item Env:DATABASE_URL
+Remove-Item Env:TEST_DATABASE_URL
 ```
 
-Para parar e apagar tambem o volume do banco daquela API:
+## Persistencia e volumes legados
 
-```powershell
-docker compose down -v
-```
+`docker compose restart db` reinicia o banco sem perder leituras. `docker compose down` tambem preserva o volume; somente `docker compose down -v` remove `aps-db-data`.
 
-Para demonstrar persistencia, crie uma leitura, reinicie apenas o banco e consulte novamente a rota GET:
-
-```powershell
-docker compose restart db
-Invoke-RestMethod "http://localhost:3001/get/alagamento"
-```
-
-## Evidencias da checklist
-
-```powershell
-# Imagens versionadas e usuario nao-root
-docker images
-docker image inspect aps-alagamento:1.0.0 --format '{{.Config.User}}'
-
-# Servicos, healthchecks e cliente leve
-docker compose ps -a
-docker compose logs migrate client
-
-# Configuracao renderizada, variaveis externas e URL interna db:5432
-docker compose config
-```
-
-O comando de inspecao da imagem deve retornar `node`.
-
-## Roteiro da checklist
-
-1. Um Dockerfile por servico: confirme os tres Dockerfiles, um por API.
-2. Multi-stage: confirme estagios `build`, `migrate`, `production-dependencies` e `runtime` nos Dockerfiles.
-3. Imagem final enxuta: confirme que o runtime executa `dist/index.js` e nao depende do fonte TypeScript.
-4. Usuario nao-root: `docker image inspect aps-alagamento:1.0.0 --format '{{.Config.User}}'` e equivalente para as outras APIs; resultado esperado `node`.
-5. Imagens versionadas por tag: confirme `aps-alagamento:1.0.0`, `aps-qualidade-ar:1.0.0`, `aps-transito:1.0.0`.
-6. `.dockerignore`: confirme existencia em cada API, excluindo `node_modules`, `generated`, `.env` e artefatos locais.
-7. Compose sobe pilha completa: confirme servicos `db`, `migrate`, `api`, `client` em cada `docker-compose.yml`.
-8. Comunicacao por nome de servico: confirme URLs internas com `db:5432` e `api:<porta>`.
-9. Persistencia por volume: confirme volumes nomeados (`alagamento-db-data`, `qualidade-ar-db-data`, `transito-db-data`) e teste com `docker compose restart db`.
-10. Configuracao por variaveis de ambiente: confirme uso de `.env` e placeholders em `docker-compose.yml`.
-11. Sem credenciais no codigo-fonte: mantenha segredo real somente em `.env`; `POSTGRES_PASSWORD=change-me` fica apenas no `.env.example`.
-12. Liveness e readiness distintos: valide `/health/live` e `/health/ready` nas tres APIs.
-13. Cliente leve consumindo pela pilha: valide `docker compose run --rm client` nas tres APIs e confira chamadas internas para `http://api:<porta>`.
+As tres pilhas anteriores usavam volumes separados. Eles nao sao importados automaticamente para `aps-db-data` e foram preservados como backup durante esta migracao. O novo ambiente inicia com dados de desenvolvimento vazios, conforme decidido para este projeto.

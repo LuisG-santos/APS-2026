@@ -1,71 +1,10 @@
-import "dotenv/config"
-import express, { type Request, type Response } from 'express'
-import { PrismaClient } from './generated/prisma/client.js'
+import 'dotenv/config'
+import { PrismaClient } from '@prisma/client'
+import { createApp } from './app.js'
 
-const app = express()
 const prisma = new PrismaClient()
 const port = Number(process.env.PORT ?? 3003)
 
-app.use(express.json())
-
-app.get('/health/live', (_req: Request, res: Response) => {
-	res.status(200).json({ status: 'ok' })
-})
-
-app.get('/health/ready', async (_req: Request, res: Response) => {
-	try {
-		await prisma.$queryRaw`SELECT 1`
-		res.status(200).json({ status: 'ready' })
-	} catch (error) {
-		console.error(error)
-		res.status(503).json({ status: 'unavailable' })
-	}
-})
-
-app.get('/get/transito', async(req: Request, res: Response)=>{
-	res.json(await prisma.transito.findMany())
-})
-
-app.post('/send/transito', (req: Request, res: Response) => {
-	const { veiculo, timestamp, posicao, velocidade, ocupacao } = req.body
-
-	if (
-		typeof veiculo !== 'string' ||
-		typeof timestamp !== 'string' ||
-		typeof posicao !== 'string' ||
-		typeof velocidade !== 'number' ||
-		typeof ocupacao !== 'number'
-	) {
-		res.status(400).json({
-			error: 'veiculo, timestamp, posicao, velocidade e ocupacao sao obrigatorios'
-		})
-		return
-	}
-
-	const data = new Date(timestamp)
-
-	if (Number.isNaN(data.getTime())) {
-		res.status(400).json({ error: 'timestamp invalido' })
-		return
-	}
-
-	prisma.transito.create({
-		data: {
-			veiculo,
-			timestamp: data,
-			posicao,
-			velocidade,
-			ocupacao
-		}
-	})
-		.then((transito) => res.status(201).json(transito))
-		.catch((err) => {
-			console.error(err)
-			res.status(500).json({ error: 'erro ao salvar a leitura' })
-		})
-	
-})
-
-app.listen(port, () => {
+createApp(prisma).listen(port, () => {
 	console.log(`API rodando em http://localhost:${port}`)
 })
