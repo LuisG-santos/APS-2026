@@ -1,16 +1,26 @@
-import express from 'express'
-import { Prisma, TipoSensorTransito, type PrismaClient } from '@prisma/client'
-import { isFiniteNumber, isNonEmptyString, parseSensorTimestamp } from '../shared/validation.js'
+import express, { type Express } from 'express'
+import { Prisma, type PrismaClient } from '@prisma/client'
+import type { ApiRequest, ApiResponse, LiveResponse, ReadyResponse } from '../shared/http.js'
+import { serializeCreated, serializeReading } from '../shared/serialization.js'
+import { parseSensorTimestamp } from '../shared/validation.js'
+import {
+  isSensorBody, isTransitoBody, medidaParaSensor,
+  type SensorResponse, type TransitoComSensor, type TransitoResponse
+} from './contracts.js'
 
-export function createApp(prisma: PrismaClient) {
+function serializeLeitura(leitura: TransitoComSensor): TransitoResponse {
+  return { ...serializeReading(leitura), sensor: serializeCreated(leitura.sensor) }
+}
+
+export function createApp(prisma: PrismaClient): Express {
   const app = express()
   app.use(express.json())
 
-  app.get('/health/live', (_req, res) => {
+  app.get('/health/live', (_req: ApiRequest<LiveResponse>, res: ApiResponse<LiveResponse>): void => {
     res.status(200).json({ status: 'ok' })
   })
 
-  app.get('/health/ready', async (_req, res) => {
+  app.get('/health/ready', async (_req: ApiRequest<ReadyResponse>, res: ApiResponse<ReadyResponse>): Promise<void> => {
     try {
       await prisma.$queryRaw`SELECT 1`
       res.status(200).json({ status: 'ready' })
@@ -20,35 +30,37 @@ export function createApp(prisma: PrismaClient) {
     }
   })
 
-  app.get('/get/transito', async (_req, res) => {
+  app.get('/get/transito', async (_req: ApiRequest<TransitoResponse[]>, res: ApiResponse<TransitoResponse[]>): Promise<void> => {
     try {
-      res.json(await prisma.transito.findMany({ include: { sensor: true } }))
+      const leituras = await prisma.transito.findMany({ include: { sensor: true } })
+      res.json(leituras.map(serializeLeitura))
     } catch (error) {
       console.error(error)
       res.status(500).json({ error: 'erro ao consultar as leituras' })
     }
   })
 
-  app.get('/get/sensores', async (_req, res) => {
+  app.get('/get/sensores', async (_req: ApiRequest<SensorResponse[]>, res: ApiResponse<SensorResponse[]>): Promise<void> => {
     try {
-      res.json(await prisma.sensorTransito.findMany())
+      const sensores = await prisma.sensorTransito.findMany()
+      res.json(sensores.map(serializeCreated))
     } catch (error) {
       console.error(error)
       res.status(500).json({ error: 'erro ao consultar os sensores' })
     }
   })
 
-  app.post('/send/sensor', async (req, res) => {
-    const { nome, tipo } = req.body ?? {}
-
-    if (!isNonEmptyString(nome) || !Object.values(TipoSensorTransito).includes(tipo)) {
+  app.post('/send/sensor', async (req: ApiRequest<SensorResponse>, res: ApiResponse<SensorResponse>): Promise<void> => {
+    const body: unknown = req.body
+    if (!isSensorBody(body)) {
       res.status(400).json({ error: 'nome e tipo sao obrigatorios; tipo deve ser RADAR, GPS ou OCUPACAO' })
       return
     }
 
+    const data: Prisma.SensorTransitoCreateInput = { nome: body.nome.trim(), tipo: body.tipo }
     try {
-      const sensor = await prisma.sensorTransito.create({ data: { nome: nome.trim(), tipo } })
-      res.status(201).json(sensor)
+      const sensor = await prisma.sensorTransito.create({ data })
+      res.status(201).json(serializeCreated(sensor))
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         res.status(409).json({ error: 'ja existe um sensor com esse nome' })
@@ -59,54 +71,35 @@ export function createApp(prisma: PrismaClient) {
     }
   })
 
-  app.post('/send/transito', async (req, res) => {
-    const { sensorId, timestamp, posicao, velocidade, ocupacao } = req.body ?? {}
-
-    if (!Number.isSafeInteger(sensorId) || sensorId <= 0 || sensorId > 2147483647) {
-      res.status(400).json({ error: 'sensorId deve ser o ID inteiro positivo de um sensor cadastrado' })
+  app.post('/send/transito', async (req: ApiRequest<TransitoResponse>, res: ApiResponse<TransitoResponse>): Promise<void> => {
+    const body: unknown = req.body
+    if (!isTransitoBody(body)) {
+      res.status(400).json({ error: 'envie sensorId inteiro positivo, timestamp e uma unica medida com o tipo correto' })
       return
     }
 
-    const sensorTimestamp = parseSensorTimestamp(timestamp)
+    const sensorTimestamp = parseSensorTimestamp(body.timestamp)
     if (!sensorTimestamp) {
       res.status(400).json({ error: 'timestamp deve ser uma data ISO 8601 valida com fuso horario' })
       return
     }
 
     try {
-      const sensor = await prisma.sensorTransito.findUnique({ where: { id: sensorId } })
+      const sensor = await prisma.sensorTransito.findUnique({ where: { id: body.sensorId } })
       if (!sensor) {
         res.status(404).json({ error: 'sensor nao encontrado' })
         return
       }
 
-      const campos = ['posicao', 'velocidade', 'ocupacao'] as const
-      const campoPorTipo = {
-        RADAR: 'velocidade',
-        GPS: 'posicao',
-        OCUPACAO: 'ocupacao'
-      } as const
-      const campo = campoPorTipo[sensor.tipo]
-      const valores = { posicao, velocidade, ocupacao }
-      const valor = valores[campo]
-      const outraMedida = campos.some(nome => nome !== campo && valores[nome] !== undefined)
-      const valorValido = campo === 'posicao' ? isNonEmptyString(valor) : isFiniteNumber(valor)
-
-      if (outraMedida || !valorValido) {
-        res.status(400).json({ error: `sensor ${sensor.tipo} deve enviar somente ${campo}, alem de sensorId e timestamp` })
+      const medida = medidaParaSensor(body, sensor.tipo)
+      if (!medida) {
+        res.status(400).json({ error: `medida incompativel com o sensor ${sensor.tipo}` })
         return
       }
 
-      const medida = campo === 'posicao' ? { posicao: valor as string } : { [campo]: valor as number }
-      const leitura = await prisma.transito.create({
-        data: {
-          sensorId,
-          timestamp: sensorTimestamp,
-          ...medida
-        },
-        include: { sensor: true }
-      })
-      res.status(201).json(leitura)
+      const data: Prisma.TransitoUncheckedCreateInput = { sensorId: body.sensorId, timestamp: sensorTimestamp, ...medida }
+      const leitura = await prisma.transito.create({ data, include: { sensor: true } })
+      res.status(201).json(serializeLeitura(leitura))
     } catch (error) {
       console.error(error)
       res.status(500).json({ error: 'erro ao salvar a leitura' })

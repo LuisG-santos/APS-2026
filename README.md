@@ -141,7 +141,23 @@ Remove-Item Env:DATABASE_URL
 Remove-Item Env:TEST_DATABASE_URL
 ```
 
-A suite possui 21 testes de integracao: timestamp do sensor, datas invalidas, cadastro e identificacao dos equipamentos, nomes duplicados, sensores inexistentes, uma medida por sensor e banco compartilhado.
+A suite possui 25 testes de integracao: timestamp do sensor, datas invalidas, cadastro e identificacao dos equipamentos, nomes duplicados, sensores inexistentes, uma medida por sensor, banco compartilhado e rejeicao de corpos JSON com tipos incorretos.
+
+## Tipagem das APIs
+
+Cada API define seus contratos de entrada e resposta em `contracts.ts`. As rotas usam `Request` e `Response` parametrizados pelos tipos do projeto, com retorno explicito. O JSON recebido e tratado como `unknown` e validado antes que seus campos sejam usados. Dados enviados ao banco seguem os tipos gerados pelo Prisma.
+
+As medidas de transito formam uma uniao de tipos mutuamente exclusivos: um corpo pode conter velocidade, posicao ou ocupacao. Misturar medidas ou informar um ID como texto produz erro de compilacao quando o contrato e usado em TypeScript e HTTP 400 quando um JSON invalido chega pela rede. O tipo do equipamento cadastrado tambem e conferido em tempo de execucao.
+
+As respostas JSON representam `timestamp` e `createdAt` como strings ISO; os objetos Date usados pelo Prisma sao serializados explicitamente. Nenhuma conversao forcada e usada para transformar o corpo recebido em uma leitura.
+
+Depois de instalar as dependencias e gerar o Prisma Client, verifique os contratos com:
+
+```powershell
+npm run typecheck
+```
+
+`tests/contracts.type-test.ts` verifica exemplos validos e rejeicoes esperadas pelo compilador, incluindo corpo nao validado, tipos incorretos e medidas misturadas. `npm test` executa build, verificacao de tipos e testes HTTP.
 
 ## Persistencia e volumes legados
 

@@ -2,6 +2,8 @@
 
 Cada equipamento tem um cadastro com `id`, `nome` unico e `tipo`. O tipo determina qual medida ele pode enviar:
 
+Os contratos TypeScript estao em `api-transito-e-transporte/contracts.ts`. Eles exigem um `sensorId` numerico, timestamp em texto e somente uma medida. O JSON recebido pela rede e validado antes do uso; a tipagem nao substitui essa validacao.
+
 | Tipo | Exemplo de nome | Campo da leitura |
 |---|---|---|
 | RADAR | radar | velocidade |
