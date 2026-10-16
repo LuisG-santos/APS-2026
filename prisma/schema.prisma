@@ -28,11 +28,29 @@ model QualidadeAr {
   createdAt   DateTime @default(now())
 }
 
+enum TipoSensorTransito {
+  RADAR
+  GPS
+  OCUPACAO
+}
+
+model SensorTransito {
+  id        Int               @id @default(autoincrement())
+  nome      String            @unique
+  tipo      TipoSensorTransito
+  leituras  Transito[]
+  createdAt DateTime          @default(now())
+}
+
 model Transito {
-  id         Int      @id @default(autoincrement())
+  id         Int            @id @default(autoincrement())
+  sensorId   Int
+  sensor     SensorTransito @relation(fields: [sensorId], references: [id], onDelete: Restrict)
   timestamp  DateTime
-  posicao    String
-  velocidade Float
-  ocupacao   Float
-  createdAt  DateTime @default(now())
+  posicao    String?
+  velocidade Float?
+  ocupacao   Float?
+  createdAt  DateTime       @default(now())
+
+  @@index([sensorId, timestamp])
 }

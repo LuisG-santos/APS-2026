@@ -8,6 +8,8 @@ Tres APIs em Node.js, Express, TypeScript e Prisma conectadas ao mesmo banco Pos
 | Qualidade do ar | 3002 | `/get/qualidade-ar` | `/send/qualidade-ar` |
 | Transito e transporte | 3003 | `/get/transito` | `/send/transito` |
 
+A API de transito tambem oferece `POST /send/sensor` para cadastrar equipamentos com nome e tipo, e `GET /get/sensores` para listar os sensores cadastrados.
+
 ## Executar com Docker
 
 Na raiz do projeto:
@@ -21,7 +23,7 @@ docker compose ps -a
 
 O Compose inicia um banco `aps`, um servico `migrate`, as tres APIs e tres clientes de verificacao. Todas as APIs recebem a mesma `DATABASE_URL`, usando o endereco interno `db:5432`. Elas iniciam somente depois que as migrations forem concluidas.
 
-O schema e todo o historico de migrations ficam em `prisma/`. O volume `aps-db-data` guarda as tabelas `Alagamento`, `QualidadeAr` e `Transito`. Os Dockerfiles usam a raiz como contexto de build, executam em multiplos estagios e usam o usuario `node` no runtime.
+O schema e todo o historico de migrations ficam em `prisma/`. O volume `aps-db-data` guarda as tabelas `Alagamento`, `QualidadeAr`, `SensorTransito` e `Transito`. Os Dockerfiles usam a raiz como contexto de build, executam em multiplos estagios e usam o usuario `node` no runtime.
 
 As portas publicadas podem ser alteradas no `.env`: `DB_PORT`, `ALAGAMENTO_API_PORT`, `QUALIDADE_AR_API_PORT` e `TRANSITO_API_PORT`.
 
@@ -50,6 +52,8 @@ python api-qualidade-do-ar/req.py
 python api-transito-e-transporte/req.py
 ```
 
+O simulador de transito cadastra ou reutiliza os sensores `radar`, `gps` e `contador`. Cada equipamento envia uma requisicao independente com seu `sensorId`, timestamp e uma unica medida.
+
 Defina `API_URL` para alterar o destino de um simulador, por exemplo `$env:API_URL = "http://localhost:3002"`.
 
 Alagamento:
@@ -77,18 +81,34 @@ Qualidade do ar exige `sensor` para identificar o equipamento e `estacao` para i
 }
 ```
 
-Transito:
+Transito: primeiro cadastre o sensor com `POST http://localhost:3003/send/sensor`:
 
 ```json
 {
-    "timestamp": "2026-10-09T00:30:00.123Z",
-    "posicao": "-23.5505,-46.6333",
-    "velocidade": 42.5,
-    "ocupacao": 0.75
+    "nome": "radar",
+    "tipo": "RADAR"
 }
 ```
 
-O campo `veiculo` foi removido do modelo, da tabela e das respostas de transito.
+Depois envie a leitura para `POST http://localhost:3003/send/transito`, usando o ID retornado no cadastro:
+
+```json
+{
+    "sensorId": 1,
+    "timestamp": "2026-10-09T00:30:00.123Z",
+    "velocidade": 42.5
+}
+```
+
+| Tipo do sensor | Medida aceita | Exemplo de nome |
+|---|---|---|
+| `RADAR` | `velocidade` | `radar` |
+| `GPS` | `posicao` | `gps` |
+| `OCUPACAO` | `ocupacao` | `contador` |
+
+O sensor deve estar cadastrado, e cada leitura deve conter somente a medida correspondente ao seu tipo. A API rejeita nomes duplicados, sensores inexistentes e medidas misturadas. As respostas de transito incluem o sensor com seu nome e tipo; os campos das outras medidas ficam `null`. O campo `veiculo` continua removido.
+
+Os exemplos completos e os comandos PowerShell estao em [sensores de transito](docs/sensores-transito.md).
 
 ## Desenvolvimento e testes
 
@@ -121,8 +141,12 @@ Remove-Item Env:DATABASE_URL
 Remove-Item Env:TEST_DATABASE_URL
 ```
 
+A suite possui 21 testes de integracao: timestamp do sensor, datas invalidas, cadastro e identificacao dos equipamentos, nomes duplicados, sensores inexistentes, uma medida por sensor e banco compartilhado.
+
 ## Persistencia e volumes legados
 
 `docker compose restart db` reinicia o banco sem perder leituras. `docker compose down` tambem preserva o volume; somente `docker compose down -v` remove `aps-db-data`.
 
 As tres pilhas anteriores usavam volumes separados. Eles nao sao importados automaticamente para `aps-db-data` e foram preservados como backup durante esta migracao. O novo ambiente inicia com dados de desenvolvimento vazios, conforme decidido para este projeto.
+
+Para quem ja usa o banco unico, a migration `20261016000000_sensores_transito` separa cada registro antigo de transito em tres leituras, mantendo medidas, timestamp e createdAt. O ID original permanece na velocidade; posicao e ocupacao recebem novos IDs. Os sensores antigos recebem nomes `legado:radar`, `legado:gps` e `legado:ocupacao`, indicando que a identificacao fisica nao era registrada. Em banco vazio, os cadastros sao feitos pelo novo POST.
