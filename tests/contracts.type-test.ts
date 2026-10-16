@@ -1,10 +1,16 @@
-import type { AlagamentoBody, AlagamentoResponse } from '../api-alagamento-inundacao/contracts.js'
-import type { QualidadeArBody } from '../api-qualidade-do-ar/contracts.js'
+import {
+  isSensorAlagamentoBody, type AlagamentoBody, type AlagamentoResponse, type SensorAlagamentoBody
+} from '../api-alagamento-inundacao/contracts.js'
+import {
+  isSensorQualidadeArBody, type QualidadeArBody, type SensorQualidadeArBody
+} from '../api-qualidade-do-ar/contracts.js'
 import { isSensorBody, type MedidaTransito, type SensorBody, type SensorResponse, type TransitoBody } from '../api-transito-e-transporte/contracts.js'
 import type { ApiRequest, ApiResponse } from '../shared/http.js'
 
 declare function alagamento(body: AlagamentoBody): void
 declare function qualidadeAr(body: QualidadeArBody): void
+declare function sensorAlagamento(body: SensorAlagamentoBody): void
+declare function sensorQualidadeAr(body: SensorQualidadeArBody): void
 declare function sensor(body: SensorBody): void
 declare function transito(body: TransitoBody): void
 declare function medida(body: MedidaTransito): void
@@ -12,18 +18,49 @@ declare function leitura(body: AlagamentoResponse): void
 
 const timestamp = '2026-10-16T12:00:00.123Z'
 
-alagamento({ sensor: 'nivel-01', timestamp, nivelCorregoCm: 120.5, chuvaAcumuladaMm: 35.2 })
-qualidadeAr({ sensor: 'ar-01', estacao: 'centro', timestamp, mp25: 35.2, co: 0.8, no3: 12.4, temperatura: 27.5 })
+sensorAlagamento({ nome: 'nivel-01', tipo: 'NIVEL' })
+sensorAlagamento({ nome: 'pluviometro', tipo: 'CHUVA' })
+alagamento({ sensorId: 1, timestamp, nivelCorregoCm: 120.5 })
+alagamento({ sensorId: 2, timestamp, chuvaAcumuladaMm: 35.2 })
+sensorQualidadeAr({ nome: 'particulas', tipo: 'MP25' })
+sensorQualidadeAr({ nome: 'monoxido', tipo: 'CO' })
+sensorQualidadeAr({ nome: 'nitrato', tipo: 'NO3' })
+sensorQualidadeAr({ nome: 'termometro', tipo: 'TEMPERATURA' })
+qualidadeAr({ sensorId: 1, estacao: 'centro', timestamp, mp25: 35.2 })
+qualidadeAr({ sensorId: 2, estacao: 'centro', timestamp, co: 0.8 })
+qualidadeAr({ sensorId: 3, estacao: 'centro', timestamp, no3: 12.4 })
+qualidadeAr({ sensorId: 4, estacao: 'centro', timestamp, temperatura: 27.5 })
 sensor({ nome: 'radar', tipo: 'RADAR' })
 transito({ sensorId: 1, timestamp, velocidade: 42.5 })
 transito({ sensorId: 2, timestamp, posicao: '-23.5505,-46.6333' })
 transito({ sensorId: 3, timestamp, ocupacao: 0.75 })
-leitura({ id: 1, sensor: 'nivel-01', timestamp, nivelCorregoCm: 120.5, chuvaAcumuladaMm: 35.2, createdAt: timestamp })
+leitura({
+  id: 1, sensorId: 1, sensor: { id: 1, nome: 'nivel-01', tipo: 'NIVEL', createdAt: timestamp },
+  timestamp, nivelCorregoCm: 120.5, chuvaAcumuladaMm: null, createdAt: timestamp
+})
 
+// @ts-expect-error O tipo de sensor deve pertencer a API de alagamento.
+sensorAlagamento({ nome: 'radar', tipo: 'RADAR' })
 // @ts-expect-error Medidas numericas nao aceitam strings.
-alagamento({ sensor: 'nivel-01', timestamp, nivelCorregoCm: '120.5', chuvaAcumuladaMm: 35.2 })
-// @ts-expect-error Qualidade do ar exige a identificacao do equipamento.
-qualidadeAr({ estacao: 'centro', timestamp, mp25: 35.2, co: 0.8, no3: 12.4, temperatura: 27.5 })
+alagamento({ sensorId: 1, timestamp, nivelCorregoCm: '120.5' })
+// @ts-expect-error Alagamento exige o ID do equipamento cadastrado.
+alagamento({ sensor: 'nivel-01', timestamp, nivelCorregoCm: 120.5 })
+// @ts-expect-error Alagamento aceita apenas uma medida por leitura.
+alagamento({ sensorId: 1, timestamp, nivelCorregoCm: 120.5, chuvaAcumuladaMm: 35.2 })
+// @ts-expect-error Uma leitura de alagamento exige uma medida.
+alagamento({ sensorId: 1, timestamp })
+// @ts-expect-error O tipo de sensor deve pertencer a API de qualidade do ar.
+sensorQualidadeAr({ nome: 'nivel', tipo: 'NIVEL' })
+// @ts-expect-error Qualidade do ar exige o ID do equipamento cadastrado.
+qualidadeAr({ sensor: 'ar-01', estacao: 'centro', timestamp, mp25: 35.2 })
+// @ts-expect-error Qualidade do ar exige a estacao da leitura.
+qualidadeAr({ sensorId: 1, timestamp, mp25: 35.2 })
+// @ts-expect-error Qualidade do ar aceita apenas uma medida por leitura.
+qualidadeAr({ sensorId: 1, estacao: 'centro', timestamp, mp25: 35.2, temperatura: 27.5 })
+// @ts-expect-error A medida de qualidade do ar deve ser numerica.
+qualidadeAr({ sensorId: 1, estacao: 'centro', timestamp, co: '0.8' })
+// @ts-expect-error Uma leitura de qualidade do ar exige uma medida.
+qualidadeAr({ sensorId: 1, estacao: 'centro', timestamp })
 // @ts-expect-error Apenas os tipos de sensor definidos no contrato sao aceitos.
 sensor({ nome: 'radar', tipo: 'CAMERA' })
 // @ts-expect-error O nome de um equipamento deve ser uma string.
@@ -45,6 +82,8 @@ sensor(request.body)
 // @ts-expect-error Campos do corpo nao podem ser acessados antes da validacao.
 request.body.nome
 if (isSensorBody(request.body)) sensor(request.body)
+if (isSensorAlagamentoBody(request.body)) sensorAlagamento(request.body)
+if (isSensorQualidadeArBody(request.body)) sensorQualidadeAr(request.body)
 
 declare const response: ApiResponse<SensorResponse>
 response.json({ id: 1, nome: 'radar', tipo: 'RADAR', createdAt: timestamp })
