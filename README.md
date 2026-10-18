@@ -10,6 +10,14 @@ Tres APIs em Node.js, Express, TypeScript e Prisma conectadas ao mesmo banco Pos
 
 As tres APIs oferecem `POST /send/sensor` para cadastrar equipamentos com nome e tipo, e `GET /get/sensores` para listar os sensores cadastrados. Cada leitura recebe o `sensorId` do equipamento e uma unica medida compativel com seu tipo.
 
+## Etapa 3 - Kubernetes
+
+A pasta `k8s/` acrescenta a implantacao no Docker Desktop: um Deployment e um Service por API, Ingress com Traefik, banco unico em StatefulSet com volume persistente, ConfigMap, Secret local, Job de migrations e HPA por CPU nas tres APIs, com metrics-server. As regras e os contratos das APIs continuam os mesmos.
+
+Depois de habilitar o cluster, construir as imagens e gerar o Secret local, aplique tudo com `kubectl apply -f k8s/`. O [guia da etapa 3](docs/kubernetes.md) explica a preparacao, o acesso e os testes para a demonstracao.
+
+Os [resultados dos testes executados](docs/resultados-testes.md) registram a validacao das APIs, persistencia, probes, RollingUpdate, HPA e balanceamento no Docker Desktop.
+
 ## Executar com Docker
 
 Na raiz do projeto:
