@@ -5,16 +5,21 @@ RUN apt-get update \
 	&& rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-
-COPY package.json package-lock.json ./
-RUN npm ci
-
-COPY prisma ./prisma
-COPY prisma.config.ts tsconfig.json index.ts ./
-RUN chown -R node:node /app
-
+RUN chown node:node /app
 USER node
 
+COPY --chown=node:node package.json package-lock.json ./
+COPY --chown=node:node api-alagamento-inundacao/package.json ./api-alagamento-inundacao/
+COPY --chown=node:node api-qualidade-do-ar/package.json ./api-qualidade-do-ar/
+COPY --chown=node:node api-transito-e-transporte/package.json ./api-transito-e-transporte/
+RUN npm ci
+
+COPY --chown=node:node prisma ./prisma
+COPY --chown=node:node tsconfig.json ./
+COPY --chown=node:node shared ./shared
+COPY --chown=node:node api-alagamento-inundacao ./api-alagamento-inundacao
+COPY --chown=node:node api-qualidade-do-ar ./api-qualidade-do-ar
+COPY --chown=node:node api-transito-e-transporte ./api-transito-e-transporte
 RUN DATABASE_URL=postgresql://prisma:prisma@localhost:5432/prisma npm run build
 
 FROM build AS migrate
@@ -34,10 +39,10 @@ WORKDIR /app
 
 COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
-COPY --from=build --chown=node:node /app/generated ./dist/generated
+COPY --from=build --chown=node:node /app/package.json ./package.json
 
 USER node
 
 EXPOSE 3001
 
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/api-alagamento-inundacao/index.js"]

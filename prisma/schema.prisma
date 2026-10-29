@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TipoSensorAlagamento {
+  NIVEL
+  CHUVA
+}
+
+model SensorAlagamento {
+  id        Int                  @id @default(autoincrement())
+  nome      String               @unique
+  tipo      TipoSensorAlagamento
+  leituras  Alagamento[]
+  createdAt DateTime             @default(now())
+}
+
+model Alagamento {
+  id               Int              @id @default(autoincrement())
+  sensorId         Int
+  sensor           SensorAlagamento @relation(fields: [sensorId], references: [id], onDelete: Restrict)
+  timestamp        DateTime
+  nivelCorregoCm   Float?
+  chuvaAcumuladaMm Float?
+  createdAt        DateTime         @default(now())
+
+  @@index([sensorId, timestamp])
+}
+
+enum TipoSensorQualidadeAr {
+  MP25
+  CO
+  NO3
+  TEMPERATURA
+}
+
+model SensorQualidadeAr {
+  id        Int                   @id @default(autoincrement())
+  nome      String                @unique
+  tipo      TipoSensorQualidadeAr
+  leituras  QualidadeAr[]
+  createdAt DateTime              @default(now())
+}
+
+model QualidadeAr {
+  id          Int               @id @default(autoincrement())
+  sensorId    Int
+  sensor      SensorQualidadeAr @relation(fields: [sensorId], references: [id], onDelete: Restrict)
+  estacao     String
+  timestamp   DateTime
+  mp25        Float?
+  co          Float?
+  no3         Float?
+  temperatura Float?
+  createdAt   DateTime          @default(now())
+
+  @@index([sensorId, timestamp])
+}
+
+enum TipoSensorTransito {
+  RADAR
+  GPS
+  OCUPACAO
+}
+
+model SensorTransito {
+  id        Int                @id @default(autoincrement())
+  nome      String             @unique
+  tipo      TipoSensorTransito
+  leituras  Transito[]
+  createdAt DateTime           @default(now())
+}
+
+model Transito {
+  id         Int            @id @default(autoincrement())
+  sensorId   Int
+  sensor     SensorTransito @relation(fields: [sensorId], references: [id], onDelete: Restrict)
+  timestamp  DateTime
+  posicao    String?
+  velocidade Float?
+  ocupacao   Float?
+  createdAt  DateTime       @default(now())
+
+  @@index([sensorId, timestamp])
+}

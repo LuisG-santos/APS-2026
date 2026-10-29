@@ -1,0 +1,131 @@
+name: aps-2026
+
+x-database-environment: &database-environment
+  DATABASE_URL: postgresql://${POSTGRES_USER:?Configure POSTGRES_USER no .env}:${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD no .env}@db:5432/${POSTGRES_DB:?Configure POSTGRES_DB no .env}
+
+x-api-defaults: &api-defaults
+  restart: unless-stopped
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Configure POSTGRES_USER no .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Configure POSTGRES_DB no .env}
+    ports:
+      - "${DB_PORT:-5433}:5432"
+    volumes:
+      - aps-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    image: aps-migrate:1.1.0
+    build:
+      context: .
+      dockerfile: api-alagamento-inundacao/Dockerfile
+      target: migrate
+    environment: *database-environment
+    command: ["npm", "run", "db:migrate"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api-alagamento:
+    <<: *api-defaults
+    image: aps-alagamento:1.1.0
+    build:
+      context: .
+      dockerfile: api-alagamento-inundacao/Dockerfile
+    environment:
+      <<: *database-environment
+      PORT: "3001"
+    ports:
+      - "${ALAGAMENTO_API_PORT:-3001}:3001"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/health/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api-qualidade-ar:
+    <<: *api-defaults
+    image: aps-qualidade-ar:1.1.0
+    build:
+      context: .
+      dockerfile: api-qualidade-do-ar/Dockerfile
+    environment:
+      <<: *database-environment
+      PORT: "3002"
+    ports:
+      - "${QUALIDADE_AR_API_PORT:-3002}:3002"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3002/health/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api-transito:
+    <<: *api-defaults
+    image: aps-transito:1.1.0
+    build:
+      context: .
+      dockerfile: api-transito-e-transporte/Dockerfile
+    environment:
+      <<: *database-environment
+      PORT: "3003"
+    ports:
+      - "${TRANSITO_API_PORT:-3003}:3003"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3003/health/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  client-alagamento:
+    image: curlimages/curl:8.12.1
+    depends_on:
+      api-alagamento:
+        condition: service_healthy
+    command:
+      - sh
+      - -ec
+      - |
+        curl --fail --silent http://api-alagamento:3001/health/ready
+        curl --fail --silent http://api-alagamento:3001/get/alagamento
+
+  client-qualidade-ar:
+    image: curlimages/curl:8.12.1
+    depends_on:
+      api-qualidade-ar:
+        condition: service_healthy
+    command:
+      - sh
+      - -ec
+      - |
+        curl --fail --silent http://api-qualidade-ar:3002/health/ready
+        curl --fail --silent http://api-qualidade-ar:3002/get/qualidade-ar
+
+  client-transito:
+    image: curlimages/curl:8.12.1
+    depends_on:
+      api-transito:
+        condition: service_healthy
+    command:
+      - sh
+      - -ec
+      - |
+        curl --fail --silent http://api-transito:3003/health/ready
+        curl --fail --silent http://api-transito:3003/get/transito
+
+volumes:
+  aps-db-data:

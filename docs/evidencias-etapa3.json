@@ -1,0 +1,1065 @@
+{
+  "executionDate": "2026-10-17",
+  "environment": {
+    "os": "Windows / Docker Desktop Linux containers",
+    "kubernetes": "1.36.1",
+    "provisioner": "kubeadm",
+    "nodes": 1,
+    "postgresql": "16.14",
+    "imageTag": "etapa3-v1"
+  },
+  "applicationValidation": [
+    "Instalacao nova: quatro migrations aplicadas; schema sem divergencias.",
+    "Atualizacao de dados existentes: 2 medidas por registro de alagamento e 4 por registro de ar; valores, zeros, timestamps, createdAt, estacao e IDs originais preservados. Transito preservado; redeploy sem duplicacao.",
+    "Build e typecheck aprovados. 38 testes HTTP e de integridade aprovados com PostgreSQL 16.14 real; 0 falhas.",
+    "Os tres simuladores Python executados duas vezes: 2, 4 e 3 POSTs por execucao; sensores reutilizados, uma medida por leitura e timestamp do dispositivo preservado.",
+    "Compose validado; containers nao executados nesta verificacao."
+  ],
+  "linuxImageValidation": {
+    "image": "aps-migrate:etapa3-v1",
+    "database": "temporario e removido",
+    "tests": 38,
+    "failures": 0,
+    "build": "aprovado",
+    "typecheck": "aprovado"
+  },
+  "kubernetes": {
+    "context": "docker-desktop",
+    "results": [
+      {
+        "name": "Inicializacao e recursos",
+        "status": "aprovado",
+        "seconds": 35,
+        "evidence": {
+          "pvc": "ae2765a9-019c-4339-acaf-ff9be08400fa",
+          "job": "Completed",
+          "ingress": "aps-traefik"
+        }
+      },
+      {
+        "name": "Ingress e nove tipos de sensor",
+        "status": "aprovado",
+        "seconds": 1,
+        "evidence": {
+          "readings": 9,
+          "types": 9,
+          "checks": [
+            "POST",
+            "GET",
+            "duplicado 409",
+            "sensor inexistente 404",
+            "medidas invalidas 400",
+            "timestamp preservado"
+          ]
+        }
+      },
+      {
+        "name": "Persistencia apos excluir banco-0",
+        "status": "aprovado",
+        "seconds": 21,
+        "evidence": {
+          "oldPod": "224a32e8-3ee4-456c-96af-8267486cc0ca",
+          "newPod": "26a0c2cc-a2ee-478a-a0f1-41d69363e29b",
+          "pvc": "ae2765a9-019c-4339-acaf-ff9be08400fa",
+          "readingsPreserved": 9
+        }
+      },
+      {
+        "name": "Readiness sem reinicios durante falha do banco",
+        "status": "aprovado",
+        "seconds": 43,
+        "evidence": {
+          "restarts": "inalterados",
+          "responses": [
+            {
+              "api": "api-alagamento",
+              "result": [
+                {
+                  "path": "/health/live",
+                  "status": 200
+                },
+                {
+                  "path": "/health/ready",
+                  "status": 503
+                }
+              ]
+            },
+            {
+              "api": "api-qualidade-ar",
+              "result": [
+                {
+                  "path": "/health/live",
+                  "status": 200
+                },
+                {
+                  "path": "/health/ready",
+                  "status": 503
+                }
+              ]
+            },
+            {
+              "api": "api-transito",
+              "result": [
+                {
+                  "path": "/health/live",
+                  "status": 200
+                },
+                {
+                  "path": "/health/ready",
+                  "status": 503
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "RollingUpdate com disponibilidade",
+        "status": "aprovado",
+        "seconds": 23,
+        "evidence": {
+          "successfulRequests": 204,
+          "failedRequests": 0
+        }
+      },
+      {
+        "name": "Metricas e escala por CPU",
+        "status": "aprovado",
+        "seconds": 262,
+        "evidence": {
+          "targets": [
+            {
+              "name": "api-alagamento",
+              "cpu": [
+                {
+                  "resource": {
+                    "current": {
+                      "averageUtilization": 1,
+                      "averageValue": "1m"
+                    },
+                    "name": "cpu"
+                  },
+                  "type": "Resource"
+                }
+              ]
+            },
+            {
+              "name": "api-qualidade-ar",
+              "cpu": [
+                {
+                  "resource": {
+                    "current": {
+                      "averageUtilization": 1,
+                      "averageValue": "1m"
+                    },
+                    "name": "cpu"
+                  },
+                  "type": "Resource"
+                }
+              ]
+            },
+            {
+              "name": "api-transito",
+              "cpu": [
+                {
+                  "resource": {
+                    "current": {
+                      "averageUtilization": 1,
+                      "averageValue": "1m"
+                    },
+                    "name": "cpu"
+                  },
+                  "type": "Resource"
+                }
+              ]
+            }
+          ],
+          "scaling": [
+            {
+              "api": "api-alagamento",
+              "observed": [
+                {
+                  "time": "2026-10-17T04:50:38.895Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 1,
+                          "averageValue": "1m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:50:44.286Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 1,
+                          "averageValue": "1m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:50:49.638Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 1,
+                          "averageValue": "1m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:50:54.929Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 1,
+                          "averageValue": "1m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:51:00.336Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 1,
+                          "averageValue": "1m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:51:06.083Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 1,
+                          "averageValue": "1m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:51:11.404Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 1,
+                          "averageValue": "1m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:51:16.825Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 1,
+                          "averageValue": "1m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:51:22.128Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 1,
+                          "averageValue": "1m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:51:27.521Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 1,
+                          "averageValue": "1m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:51:32.774Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 1,
+                          "averageValue": "1m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:51:38.217Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 1,
+                          "averageValue": "1m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:51:43.805Z",
+                  "current": 1,
+                  "desired": 2,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 499,
+                          "averageValue": "499m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:51:49.269Z",
+                  "current": 1,
+                  "desired": 2,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 499,
+                          "averageValue": "499m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:51:54.594Z",
+                  "current": 1,
+                  "desired": 2,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 499,
+                          "averageValue": "499m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:51:59.887Z",
+                  "current": 1,
+                  "desired": 2,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 499,
+                          "averageValue": "499m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 2
+                }
+              ],
+              "backendAddresses": [
+                "10.1.0.22:3001",
+                "10.1.0.21:3001"
+              ],
+              "load": {
+                "sucesso": 49029,
+                "falhas": 0,
+                "segundos": 91.45,
+                "requisicoesPorSegundo": 536.1
+              }
+            },
+            {
+              "api": "api-qualidade-ar",
+              "observed": [
+                {
+                  "time": "2026-10-17T04:52:10.671Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 6,
+                          "averageValue": "6m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:52:15.949Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 6,
+                          "averageValue": "6m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:52:21.205Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 6,
+                          "averageValue": "6m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:52:26.508Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 6,
+                          "averageValue": "6m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:52:31.955Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 6,
+                          "averageValue": "6m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:52:37.244Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 6,
+                          "averageValue": "6m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:52:42.691Z",
+                  "current": 1,
+                  "desired": 2,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 499,
+                          "averageValue": "499m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:52:48.082Z",
+                  "current": 1,
+                  "desired": 2,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 499,
+                          "averageValue": "499m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:52:53.332Z",
+                  "current": 1,
+                  "desired": 2,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 499,
+                          "averageValue": "499m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:52:58.633Z",
+                  "current": 1,
+                  "desired": 2,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 499,
+                          "averageValue": "499m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:53:03.963Z",
+                  "current": 1,
+                  "desired": 2,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 499,
+                          "averageValue": "499m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 2
+                }
+              ],
+              "backendAddresses": [
+                "10.1.0.17:3002",
+                "10.1.0.23:3002"
+              ],
+              "load": {
+                "sucesso": 33426,
+                "falhas": 0,
+                "segundos": 63.56,
+                "requisicoesPorSegundo": 525.91
+              }
+            },
+            {
+              "api": "api-transito",
+              "observed": [
+                {
+                  "time": "2026-10-17T04:53:14.54Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 1,
+                          "averageValue": "1m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:53:19.827Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 1,
+                          "averageValue": "1m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:53:25.134Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 1,
+                          "averageValue": "1m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:53:30.375Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 1,
+                          "averageValue": "1m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:53:35.668Z",
+                  "current": 1,
+                  "desired": 1,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 1,
+                          "averageValue": "1m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:53:41.403Z",
+                  "current": 1,
+                  "desired": 2,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 499,
+                          "averageValue": "499m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:53:46.69Z",
+                  "current": 1,
+                  "desired": 2,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 499,
+                          "averageValue": "499m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:53:51.988Z",
+                  "current": 1,
+                  "desired": 2,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 499,
+                          "averageValue": "499m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:53:57.263Z",
+                  "current": 1,
+                  "desired": 2,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 499,
+                          "averageValue": "499m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 1
+                },
+                {
+                  "time": "2026-10-17T04:54:02.686Z",
+                  "current": 1,
+                  "desired": 2,
+                  "cpu": [
+                    {
+                      "resource": {
+                        "current": {
+                          "averageUtilization": 499,
+                          "averageValue": "499m"
+                        },
+                        "name": "cpu"
+                      },
+                      "type": "Resource"
+                    }
+                  ],
+                  "ready": 2
+                }
+              ],
+              "backendAddresses": [
+                "10.1.0.24:3003",
+                "10.1.0.18:3003"
+              ],
+              "load": {
+                "sucesso": 30138,
+                "falhas": 0,
+                "segundos": 58.44,
+                "requisicoesPorSegundo": 515.74
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "pythonClients": {
+    "entrypoint": "NodePort 30080 / Ingress Traefik",
+    "results": [
+      {
+        "api": "alagamento",
+        "executions": 2,
+        "readings": 4,
+        "sensorsReused": true,
+        "timestampsPreserved": true
+      },
+      {
+        "api": "qualidade-ar",
+        "executions": 2,
+        "readings": 8,
+        "sensorsReused": true,
+        "timestampsPreserved": true
+      },
+      {
+        "api": "transito",
+        "executions": 2,
+        "readings": 6,
+        "sensorsReused": true,
+        "timestampsPreserved": true
+      }
+    ]
+  },
+  "scaleDown": {
+    "status": "aprovado",
+    "observed": [
+      {
+        "time": "2026-10-17T04:54:49.132Z",
+        "apps": [
+          {
+            "name": "api-alagamento",
+            "desired": 1,
+            "available": 1
+          },
+          {
+            "name": "api-qualidade-ar",
+            "desired": 1,
+            "available": 1
+          },
+          {
+            "name": "api-transito",
+            "desired": 2,
+            "available": 2
+          }
+        ]
+      },
+      {
+        "time": "2026-10-17T04:54:59.259Z",
+        "apps": [
+          {
+            "name": "api-alagamento",
+            "desired": 1,
+            "available": 1
+          },
+          {
+            "name": "api-qualidade-ar",
+            "desired": 1,
+            "available": 1
+          },
+          {
+            "name": "api-transito",
+            "desired": 2,
+            "available": 2
+          }
+        ]
+      },
+      {
+        "time": "2026-10-17T04:55:09.397Z",
+        "apps": [
+          {
+            "name": "api-alagamento",
+            "desired": 1,
+            "available": 1
+          },
+          {
+            "name": "api-qualidade-ar",
+            "desired": 1,
+            "available": 1
+          },
+          {
+            "name": "api-transito",
+            "desired": 2,
+            "available": 2
+          }
+        ]
+      },
+      {
+        "time": "2026-10-17T04:55:19.53Z",
+        "apps": [
+          {
+            "name": "api-alagamento",
+            "desired": 1,
+            "available": 1
+          },
+          {
+            "name": "api-qualidade-ar",
+            "desired": 1,
+            "available": 1
+          },
+          {
+            "name": "api-transito",
+            "desired": 2,
+            "available": 2
+          }
+        ]
+      },
+      {
+        "time": "2026-10-17T04:55:29.655Z",
+        "apps": [
+          {
+            "name": "api-alagamento",
+            "desired": 1,
+            "available": 1
+          },
+          {
+            "name": "api-qualidade-ar",
+            "desired": 1,
+            "available": 1
+          },
+          {
+            "name": "api-transito",
+            "desired": 2,
+            "available": 2
+          }
+        ]
+      },
+      {
+        "time": "2026-10-17T04:55:39.776Z",
+        "apps": [
+          {
+            "name": "api-alagamento",
+            "desired": 1,
+            "available": 1
+          },
+          {
+            "name": "api-qualidade-ar",
+            "desired": 1,
+            "available": 1
+          },
+          {
+            "name": "api-transito",
+            "desired": 2,
+            "available": 2
+          }
+        ]
+      },
+      {
+        "time": "2026-10-17T04:55:49.897Z",
+        "apps": [
+          {
+            "name": "api-alagamento",
+            "desired": 1,
+            "available": 1
+          },
+          {
+            "name": "api-qualidade-ar",
+            "desired": 1,
+            "available": 1
+          },
+          {
+            "name": "api-transito",
+            "desired": 1,
+            "available": 1
+          }
+        ]
+      }
+    ]
+  }
+}
