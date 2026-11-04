@@ -60,7 +60,7 @@ python api-qualidade-do-ar/req.py
 python api-transito-e-transporte/req.py
 ```
 
-Cada simulador cadastra ou reutiliza os equipamentos pelo nome. Alagamento envia duas leituras, qualidade do ar envia quatro e transito envia tres. Cada equipamento envia uma requisicao independente com seu `sensorId`, timestamp e uma unica medida.
+Cada simulador cadastra ou reutiliza os equipamentos pelo nome. Alagamento envia tres leituras, qualidade do ar envia quatro e transito envia tres. Cada equipamento envia uma requisicao independente com seu `sensorId`, timestamp e uma unica medida.
 
 Defina `API_URL` para alterar o destino de um simulador, por exemplo `$env:API_URL = "http://localhost:3002"`.
 
@@ -69,7 +69,7 @@ Primeiro cadastre o equipamento com `POST /send/sensor` na porta da API correspo
 ```json
 {
     "nome": "sensor-nivel",
-    "tipo": "NIVEL"
+    "tipo": "NIVEL_CORREGO"
 }
 ```
 
@@ -83,12 +83,11 @@ Depois envie a leitura para `POST http://localhost:3001/send/alagamento`, usando
 }
 ```
 
-Qualidade do ar: cadastre, por exemplo, `{"nome":"sensor-mp25","tipo":"MP25"}` em `POST http://localhost:3002/send/sensor`. Use seu ID em `POST http://localhost:3002/send/qualidade-ar`. O campo `estacao` continua obrigatorio para identificar o local:
+Qualidade do ar: cadastre, por exemplo, `{"nome":"sensor-mp25","tipo":"MP25","estacao":"estacao-01"}` em `POST http://localhost:3002/send/sensor`. A estacao e obrigatoria no cadastro do equipamento. Use seu ID em `POST http://localhost:3002/send/qualidade-ar`, sem repetir a estacao na leitura:
 
 ```json
 {
     "sensorId": 1,
-    "estacao": "estacao-01",
     "timestamp": "2026-10-09T00:30:00.123Z",
     "mp25": 35.2
 }
@@ -106,11 +105,12 @@ Transito: cadastre `{"nome":"radar","tipo":"RADAR"}` em `POST http://localhost:3
 
 | API | Tipo do sensor | Medida aceita | Exemplo de nome |
 |---|---|---|---|
-| Alagamento | `NIVEL` | `nivelCorregoCm` | `sensor-nivel` |
-| Alagamento | `CHUVA` | `chuvaAcumuladaMm` | `pluviometro` |
+| Alagamento | `NIVEL_CORREGO` | `nivelCorregoCm` | `sensor-nivel` |
+| Alagamento | `PLUVIOMETRO` | `chuvaAcumuladaMm` | `pluviometro` |
+| Alagamento | `NIVEL_VIA` | `nivelAguaViaCm` | `sensor-nivel-via` |
 | Qualidade do ar | `MP25` | `mp25` | `sensor-mp25` |
 | Qualidade do ar | `CO` | `co` | `sensor-co` |
-| Qualidade do ar | `NO3` | `no3` | `sensor-no3` |
+| Qualidade do ar | `NO2` | `no2` | `sensor-no2` |
 | Qualidade do ar | `TEMPERATURA` | `temperatura` | `termometro` |
 | Transito | `RADAR` | `velocidade` | `radar` |
 | Transito | `GPS` | `posicao` | `gps` |
@@ -180,3 +180,21 @@ Para quem ja usa o banco unico, a migration `20261016000000_sensores_transito` s
 A migration `20261016010000_sensores_alagamento_qualidade_ar` aplica a mesma separacao as outras APIs: duas leituras por registro antigo de alagamento e quatro por registro de qualidade do ar. Os valores, timestamps, createdAt e estacao sao mantidos. O ID original permanece no nivel e no MP25; as outras medidas recebem novos IDs. Os cadastros gerados recebem nomes `legado:<sensor antigo>:<TIPO>` para preservar a origem e identificar a separacao. O campo textual `sensor` e substituido pelo relacionamento obrigatorio `sensorId`.
 
 Ao atualizar uma instalacao local, execute `npm run db:migrate` e `npm run build` antes de reiniciar as APIs. No Docker, execute novamente `docker compose up --build -d`; o servico `migrate` aplica a nova migration. Os clientes devem passar a cadastrar o sensor e enviar cada medida separadamente.
+
+### Restauracao dos sensores de alagamento
+
+A migration `20261104000000_restaurar_sensores_alagamento` renomeia os tipos `NIVEL` e `CHUVA` para `NIVEL_CORREGO` e `PLUVIOMETRO` e acrescenta `NIVEL_VIA`/`nivelAguaViaCm`. IDs, nomes, leituras e timestamps existentes sao preservados. Clientes devem usar os novos nomes dos tipos no cadastro. Nenhuma migration antiga foi alterada.
+
+Niveis sao medidos em cm a partir de uma referencia fixa de cada ponto. `chuvaAcumuladaMm` representa a precipitacao dos ultimos 60 minutos; leituras de janelas sobrepostas nao devem ser somadas.
+
+Execute `npm run test:alagamento` para verificar os contratos. Com `TEST_DATABASE_URL` definido, o mesmo comando tambem verifica a preservacao de dados da migration em um schema temporario com rollback. Os testes HTTP completos continuam em `npm test`, exigindo um banco de testes com todas as migrations aplicadas.
+
+### Restauracao dos sensores de qualidade do ar
+
+A migration `20261104010000_restaurar_sensores_qualidade_ar` corrige `NO3`/`no3` para `NO2`/`no2` e move `estacao` para `SensorQualidadeAr`. O cadastro exige `nome`, `tipo` e `estacao`, com espacos nas extremidades removidos. Cada leitura envia `sensorId`, `timestamp` e apenas uma medida. As respostas incluem a estacao em `sensor.estacao`. Enviar `no3` ou `estacao` no corpo da leitura retorna HTTP 400.
+
+Os quatro tipos sao `MP25`, `CO`, `NO2` e `TEMPERATURA`. Nos exemplos e simuladores, PM2.5 e NO2 usam µg/m³, CO usa ppm e temperatura usa °C.
+
+A migration preserva IDs das leituras, valores, timestamps e createdAt. Para um sensor com uma unica estacao, mantem tambem seu ID e nome. Se o mesmo sensor tinha leituras de varios locais, a primeira estacao em ordem alfabetica fica com o cadastro original; as demais recebem novos cadastros com sufixo `:estacao:<local>` no nome. As leituras passam a apontar para o cadastro correspondente. Colisoes de nomes recebem `:` adicionais. Sensores sem leituras recebem a estacao `legado:sem-estacao`, pois nao havia local registrado. Nenhuma migration antiga foi alterada.
+
+O simulador de qualidade do ar cadastra ou reutiliza os quatro equipamentos na `estacao-01` e informa conflito de tipo ou estacao. `npm run test:qualidade-ar` compila, verifica tipos e executa os testes dos contratos; com `TEST_DATABASE_URL`, tambem testa a migration em schemas temporarios com rollback, cobrindo banco vazio, varias estacoes e preservacao das outras APIs.
