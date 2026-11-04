@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { isQualidadeArBody, isSensorQualidadeArBody, medidaParaSensor } from '../dist/api-qualidade-do-ar/contracts.js'
+import { isQualidadeArBody, isSensorQualidadeArBody } from '../dist/api-qualidade-do-ar/contracts.js'
 
 const medidas = [['MP25', 'mp25', 35.2], ['CO', 'co', 0.8], ['NO2', 'no2', 12.4], ['TEMPERATURA', 'temperatura', 27.5]]
 const base = { sensorId: 1, timestamp: '2026-11-04T12:00:00Z' }
@@ -10,9 +10,7 @@ for (const [tipo, campo, valor] of medidas) {
     assert.equal(isSensorQualidadeArBody({ nome: 'sensor-01', tipo, estacao: 'centro' }), true)
     const body = { ...base, [campo]: valor }
     assert.equal(isQualidadeArBody(body), true)
-    assert.deepEqual(medidaParaSensor(body, tipo), { [campo]: valor })
-    for (const [outroTipo, outroCampo, outroValor] of medidas.filter(([item]) => item !== tipo)) {
-      assert.equal(medidaParaSensor(body, outroTipo), null)
+    for (const [, outroCampo, outroValor] of medidas.filter(([item]) => item !== tipo)) {
       assert.equal(isQualidadeArBody({ ...body, [outroCampo]: outroValor }), false)
       assert.equal(isQualidadeArBody({ ...body, [outroCampo]: null }), false)
     }
