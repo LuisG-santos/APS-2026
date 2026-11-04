@@ -53,11 +53,11 @@ export function createApp(prisma: PrismaClient): Express {
   app.post('/send/sensor', async (req: ApiRequest<SensorQualidadeArResponse>, res: ApiResponse<SensorQualidadeArResponse>): Promise<void> => {
     const body: unknown = req.body
     if (!isSensorQualidadeArBody(body)) {
-      res.status(400).json({ error: 'nome e tipo sao obrigatorios; tipo deve ser MP25, CO, NO3, TEMPERATURA' })
+      res.status(400).json({ error: 'nome, tipo e estacao sao obrigatorios; tipo deve ser MP25, CO, NO2, TEMPERATURA' })
       return
     }
 
-    const data: Prisma.SensorQualidadeArCreateInput = { nome: body.nome.trim(), tipo: body.tipo }
+    const data: Prisma.SensorQualidadeArCreateInput = { nome: body.nome.trim(), tipo: body.tipo, estacao: body.estacao.trim() }
     try {
       const sensor = await prisma.sensorQualidadeAr.create({ data })
       res.status(201).json(serializeCreated(sensor))
@@ -74,7 +74,7 @@ export function createApp(prisma: PrismaClient): Express {
   app.post('/send/qualidade-ar', async (req: ApiRequest<QualidadeArResponse>, res: ApiResponse<QualidadeArResponse>): Promise<void> => {
     const body: unknown = req.body
     if (!isQualidadeArBody(body)) {
-      res.status(400).json({ error: 'envie sensorId inteiro positivo, estacao, timestamp e uma unica medida com o tipo correto' })
+      res.status(400).json({ error: 'envie sensorId inteiro positivo, timestamp e uma unica medida com o tipo correto; estacao pertence ao cadastro e no3 foi substituido por no2' })
       return
     }
 
@@ -97,7 +97,7 @@ export function createApp(prisma: PrismaClient): Express {
         return
       }
 
-      const data: Prisma.QualidadeArUncheckedCreateInput = { sensorId: body.sensorId, timestamp: sensorTimestamp, estacao: body.estacao, ...medida }
+      const data: Prisma.QualidadeArUncheckedCreateInput = { sensorId: body.sensorId, timestamp: sensorTimestamp, ...medida }
       const leitura = await prisma.qualidadeAr.create({ data, include: { sensor: true } })
       res.status(201).json(serializeLeitura(leitura))
     } catch (error) {
