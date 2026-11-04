@@ -14,12 +14,12 @@ if (!process.env.TEST_DATABASE_URL) {
 const apis = [
   {
     route: 'alagamento', model: 'alagamento', sensorModel: 'sensorAlagamento', createApp: alagamento,
-    medidas: [['NIVEL', 'nivelCorregoCm', 120.5], ['CHUVA', 'chuvaAcumuladaMm', 35.2]], extra: {}
+    medidas: [['NIVEL_CORREGO', 'nivelCorregoCm', 120.5], ['PLUVIOMETRO', 'chuvaAcumuladaMm', 35.2], ['NIVEL_VIA', 'nivelAguaViaCm', 8.0]], extra: {}
   },
   {
     route: 'qualidade-ar', model: 'qualidadeAr', sensorModel: 'sensorQualidadeAr', createApp: qualidadeAr,
-    medidas: [['MP25', 'mp25', 35.2], ['CO', 'co', 0.8], ['NO3', 'no3', 12.4], ['TEMPERATURA', 'temperatura', 27.5]],
-    extra: { estacao: 'teste-estacao' }
+    medidas: [['MP25', 'mp25', 35.2], ['CO', 'co', 0.8], ['NO2', 'no2', 12.4], ['TEMPERATURA', 'temperatura', 27.5]],
+    extra: {}, cadastroExtra: { estacao: 'teste-estacao' }
   },
   {
     route: 'transito', model: 'transito', sensorModel: 'sensorTransito', createApp: transito,
@@ -59,7 +59,7 @@ before(async () => {
     await once(api.server, 'listening')
     api.url = `http://127.0.0.1:${api.server.address().port}`
     for (const [tipo] of api.medidas) {
-      const { status, body } = await cadastrarSensor(api, { nome: `${prefix}-${tipo}`, tipo })
+      const { status, body } = await cadastrarSensor(api, { nome: `${prefix}-${tipo}`, tipo, ...api.cadastroExtra })
       assert.equal(status, 201)
       api.sensores[tipo] = body
     }
@@ -85,13 +85,14 @@ after(async () => {
 for (const api of apis) {
   test(`${api.route}: cadastra nome, tipo e ID e lista os sensores`, async () => {
     const [tipo] = api.medidas[0]
-    const { status, body } = await cadastrarSensor(api, { nome: `  ${prefix}-${tipo}-extra  `, tipo })
+    const { status, body } = await cadastrarSensor(api, { nome: `  ${prefix}-${tipo}-extra  `, tipo, ...api.cadastroExtra })
     assert.equal(status, 201)
     assert.equal(body.nome, `${prefix}-${tipo}-extra`)
     assert.equal(body.tipo, tipo)
     assert.equal(typeof body.createdAt, 'string')
     const stored = await api.prisma[api.sensorModel].findUniqueOrThrow({ where: { id: body.id } })
     assert.equal(stored.nome, body.nome)
+    if (api.model === 'qualidadeAr') assert.equal(body.estacao, 'teste-estacao')
     assert.equal(stored.createdAt.toISOString(), body.createdAt)
     const response = await fetch(`${api.url}/get/sensores`)
     assert.equal(response.status, 200)
@@ -104,14 +105,14 @@ for (const api of apis) {
     for (const payload of [{}, [], [{ nome: 'sensor', tipo }], { nome: '', tipo }, { nome: '   ', tipo },
       { nome: 123, tipo }, { nome: `${prefix}-invalido` }, { nome: `${prefix}-invalido`, tipo: 'CAMERA' },
       { nome: `${prefix}-invalido`, tipo: [tipo] }, { nome: `${prefix}-invalido`, tipo: {} }]) {
-      assert.equal((await cadastrarSensor(api, payload)).status, 400)
+      assert.equal((await cadastrarSensor(api, { ...api.cadastroExtra, ...payload })).status, 400)
     }
     assert.equal(await api.prisma[api.sensorModel].count(), count)
   })
 
   test(`${api.route}: nome duplicado retorna 409`, async () => {
     const [tipo] = api.medidas[0]
-    assert.equal((await cadastrarSensor(api, { nome: api.sensores[tipo].nome, tipo })).status, 409)
+    assert.equal((await cadastrarSensor(api, { nome: api.sensores[tipo].nome, tipo, ...api.cadastroExtra })).status, 409)
   })
 
   test(`${api.route}: exige sensor cadastrado com ID valido`, async () => {
@@ -130,6 +131,7 @@ for (const api of apis) {
       assert.equal(status, 201)
       assert.equal(body.sensorId, sensor.id)
       assert.deepEqual(body.sensor, sensor)
+      if (api.model === 'qualidadeAr') assert.equal(Object.hasOwn(body, 'estacao'), false)
       for (const [, measure] of api.medidas) {
         assert.equal(body[measure], measure === field ? value : null)
       }
@@ -213,13 +215,25 @@ for (const api of apis) {
   })
 }
 
-test('qualidade-ar: estacao continua obrigatoria como local da leitura', async () => {
+test('qualidade-ar: estacao e obrigatoria no cadastro, com normalizacao de espacos', async () => {
   const api = apis[1]
-  const count = await api.prisma.qualidadeAr.count()
+  const count = await api.prisma.sensorQualidadeAr.count()
   for (const estacao of [undefined, null, '', '   ', 123, []]) {
-    assert.equal((await send(api, { ...api.payload, estacao })).status, 400)
+    assert.equal((await cadastrarSensor(api, { nome: `${prefix}-sem-estacao`, tipo: 'MP25', estacao })).status, 400)
   }
-  assert.equal(await api.prisma.qualidadeAr.count(), count)
+  assert.equal(await api.prisma.sensorQualidadeAr.count(), count)
+  const { status, body } = await cadastrarSensor(api, { nome: `${prefix}-estacao-normalizada`, tipo: 'CO', estacao: '  centro  ' })
+  assert.equal(status, 201)
+  assert.equal(body.estacao, 'centro')
+})
+
+test('qualidade-ar: rejeita NO3 e estacao em leituras do contrato antigo', async () => {
+  const api = apis[1]
+  assert.equal((await cadastrarSensor(api, { nome: `${prefix}-no3`, tipo: 'NO3', estacao: 'centro' })).status, 400)
+  for (const payload of [{ ...api.payload, estacao: 'centro' }, { ...api.payload, no3: 12.4 },
+    { sensorId: api.sensores.NO2.id, timestamp, no3: 12.4 }]) {
+    assert.equal((await send(api, payload)).status, 400)
+  }
 })
 
 test('as tres APIs usam o mesmo banco com tres tabelas de leituras e tres de sensores', async () => {
