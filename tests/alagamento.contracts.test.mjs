@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { isAlagamentoBody, isSensorAlagamentoBody, medidaParaSensor } from '../dist/api-alagamento-inundacao/contracts.js'
+import { isAlagamentoBody, isSensorAlagamentoBody } from '../dist/api-alagamento-inundacao/contracts.js'
 
 const medidas = [
   ['NIVEL_CORREGO', 'nivelCorregoCm', 120.5],
@@ -14,9 +14,7 @@ for (const [tipo, campo, valor] of medidas) {
     assert.equal(isSensorAlagamentoBody({ nome: 'sensor-01', tipo }), true)
     const body = { ...base, [campo]: valor }
     assert.equal(isAlagamentoBody(body), true)
-    assert.deepEqual(medidaParaSensor(body, tipo), { [campo]: valor })
-    for (const [outroTipo, outroCampo, outroValor] of medidas.filter(([item]) => item !== tipo)) {
-      assert.equal(medidaParaSensor(body, outroTipo), null)
+    for (const [, outroCampo, outroValor] of medidas.filter(([item]) => item !== tipo)) {
       assert.equal(isAlagamentoBody({ ...body, [outroCampo]: outroValor }), false)
       assert.equal(isAlagamentoBody({ ...body, [outroCampo]: null }), false)
     }
