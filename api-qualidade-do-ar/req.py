@@ -21,17 +21,17 @@ def enviar_json(url, dados):
         return json.load(resposta)
 
 
-def obter_sensor(base_url, nome, tipo):
+def obter_sensor(base_url, nome, tipo, estacao):
     sensor = next((item for item in consultar_sensores(base_url) if item["nome"] == nome), None)
     if sensor is None:
         try:
-            sensor = enviar_json(f"{base_url}/send/sensor", {"nome": nome, "tipo": tipo})
+            sensor = enviar_json(f"{base_url}/send/sensor", {"nome": nome, "tipo": tipo, "estacao": estacao})
         except HTTPError as erro:
             if erro.code != 409:
                 raise
             sensor = next(item for item in consultar_sensores(base_url) if item["nome"] == nome)
-    if sensor["tipo"] != tipo:
-        raise ValueError(f"O sensor {nome} ja esta cadastrado com outro tipo.")
+    if sensor["tipo"] != tipo or sensor["estacao"] != estacao:
+        raise ValueError(f"O sensor {nome} ja esta cadastrado com outro tipo ou estacao.")
     return sensor
 
 
@@ -40,12 +40,12 @@ def enviar_leitura():
     sensores = [
         ("sensor-mp25", "MP25", {"mp25": 35.2}),
         ("sensor-co", "CO", {"co": 0.8}),
-        ("sensor-no3", "NO3", {"no3": 12.4}),
+        ("sensor-no2", "NO2", {"no2": 12.4}),
         ("termometro", "TEMPERATURA", {"temperatura": 27.5}),
     ]
     for nome, tipo, medida in sensores:
-        sensor = obter_sensor(base_url, nome, tipo)
-        leitura = {"sensorId": sensor["id"], "estacao": "estacao-01", **medida}
+        sensor = obter_sensor(base_url, nome, tipo, "estacao-01")
+        leitura = {"sensorId": sensor["id"], **medida}
         # Cada sensor gera o horario imediatamente antes de enviar sua medida.
         leitura["timestamp"] = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
         print(json.dumps(enviar_json(f"{base_url}/send/qualidade-ar", leitura), ensure_ascii=False))
