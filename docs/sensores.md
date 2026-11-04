@@ -124,12 +124,12 @@ Cada execucao envia tres, quatro e tres leituras, respectivamente. Rodar de novo
 
 Consulte o [README](../README.md) para executar o ambiente, aplicar migrations e rodar os testes de integracao e de tipagem.
 
-## Organizacao da API de alagamento
+## Organizacao das APIs de alagamento e qualidade do ar
 
-O fluxo de uma requisicao e **rota → controller → service → repository → banco**. Sensores e leituras possuem arquivos separados em cada camada dentro de `api-alagamento-inundacao/`:
+O fluxo de uma requisicao e **rota → controller → service → repository → banco**. Sensores e leituras possuem arquivos separados em cada camada dentro de `api-alagamento-inundacao/` e `api-qualidade-do-ar/`:
 
 - **controllers/** recebe o JSON, valida sua estrutura com os contratos, chama o service e monta a resposta HTTP, serializando datas como strings ISO.
-- **services/** concentra as regras: normalizacao do nome, validade do timestamp, existencia do equipamento e compatibilidade da medida com o tipo cadastrado. Os services recebem repositories como dependencias e retornam objetos internos, sem depender de Express.
+- **services/** concentra as regras: normalizacao do nome (e da estacao na qualidade do ar), validade do timestamp, existencia do equipamento e compatibilidade da medida com o tipo cadastrado. Os services recebem repositories como dependencias e retornam objetos internos, sem depender de Express.
 - **repositories/** concentra as consultas e gravacoes Prisma. O repository de sensores traduz nome duplicado em erro conhecido; o de leituras inclui o sensor nos resultados e verifica a conexao com o banco.
 - **errors.ts** define codigos e mensagens dos erros conhecidos, sem status HTTP. Os controllers fazem a conversao para 400, 404 ou 409. Falhas inesperadas continuam retornando 500.
 - **app.ts** monta as dependencias e registra as rotas. Os handlers pequenos de health ficam aqui; readiness verifica a conexao pelo service e repository e retorna 503 quando o banco esta indisponivel.
@@ -137,6 +137,8 @@ O fluxo de uma requisicao e **rota → controller → service → repository →
 
 Por exemplo, ao receber uma leitura de nivel na via, o controller valida `sensorId`, `timestamp` e `nivelAguaViaCm`; o service valida o instante e verifica se o equipamento existe e e `NIVEL_VIA`; o repository grava a leitura. O controller retorna o registro com o sensor associado e as datas serializadas.
 
-`npm run test:alagamento` executa build, verificacao de tipos e testes dos contratos, services e controllers sem exigir banco. O teste da migration roda somente com `TEST_DATABASE_URL` configurado. Os testes de service usam repositories simulados para verificar que falhas de timestamp, sensor ou medida impedem gravacao. Os testes de controller verificam status, mensagens e serializacao. A integracao HTTP com PostgreSQL continua em `npm test`, exigindo banco de testes com migrations aplicadas.
+`npm run test:alagamento` e `npm run test:qualidade-ar` executam build, verificacao de tipos e testes dos contratos, services e controllers sem exigir banco. Os testes das migrations rodam somente com `TEST_DATABASE_URL` configurado. Os testes de service usam repositories simulados para verificar que falhas de timestamp, sensor ou medida impedem gravacao. Os testes de controller verificam status, mensagens e serializacao. A integracao HTTP com PostgreSQL continua em `npm test`, exigindo banco de testes com migrations aplicadas.
 
-Esta separacao foi aplicada somente a alagamento; qualidade do ar e transito mantem sua organizacao atual.
+Na qualidade do ar, o service de sensores remove espacos nas extremidades de nome e estacao. O service de leituras aceita a medida correspondente a `MP25`, `CO`, `NO2` ou `TEMPERATURA`; estacao continua apenas no cadastro e aparece na resposta em `sensor.estacao`. Os controllers preservam a rejeicao dos campos antigos `no3` e `estacao` no corpo da leitura. Cada API possui seus proprios erros e camadas, sem repository generico.
+
+Esta separacao foi aplicada a alagamento e qualidade do ar; transito mantem sua organizacao atual.
