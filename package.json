@@ -17,7 +17,8 @@
     "dev:qualidade-ar": "tsx api-qualidade-do-ar/index.ts",
     "dev:transito": "tsx api-transito-e-transporte/index.ts",
     "typecheck": "tsc --noEmit --project tsconfig.type-tests.json",
-    "test": "npm run build && npm run typecheck && node --test tests/api.test.mjs tests/migration.test.mjs"
+    "test:services": "npm run build && node --test tests/services.test.mjs",
+    "test": "npm run build && npm run typecheck && node --test tests/services.test.mjs tests/api.test.mjs tests/migration.test.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
