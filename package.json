@@ -17,9 +17,9 @@
     "dev:qualidade-ar": "tsx api-qualidade-do-ar/index.ts",
     "dev:transito": "tsx api-transito-e-transporte/index.ts",
     "typecheck": "tsc --noEmit --project tsconfig.type-tests.json",
-    "test:alagamento": "npm run build && npm run typecheck && node --test tests/alagamento.contracts.test.mjs tests/alagamento.migration.test.mjs",
+    "test:alagamento": "npm run build && npm run typecheck && node --test tests/alagamento.contracts.test.mjs tests/alagamento.services.test.mjs tests/alagamento.controllers.test.mjs tests/alagamento.migration.test.mjs",
     "test:qualidade-ar": "npm run build && npm run typecheck && node --test tests/qualidade-ar.contracts.test.mjs tests/qualidade-ar.migration.test.mjs",
-    "test": "npm run build && npm run typecheck && node --test tests/api.test.mjs tests/alagamento.contracts.test.mjs tests/alagamento.migration.test.mjs tests/qualidade-ar.contracts.test.mjs tests/qualidade-ar.migration.test.mjs"
+    "test": "npm run build && npm run typecheck && node --test tests/api.test.mjs tests/alagamento.contracts.test.mjs tests/alagamento.services.test.mjs tests/alagamento.controllers.test.mjs tests/alagamento.migration.test.mjs tests/qualidade-ar.contracts.test.mjs tests/qualidade-ar.migration.test.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

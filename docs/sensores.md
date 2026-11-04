@@ -123,3 +123,20 @@ python api-transito-e-transporte/req.py
 Cada execucao envia tres, quatro e tres leituras, respectivamente. Rodar de novo cria novas leituras e reutiliza os sensores. Se um nome ja estiver cadastrado com outro tipo, o simulador informa o conflito. Qualidade do ar tambem verifica conflito de estacao, usando `estacao-01` nos quatro equipamentos.
 
 Consulte o [README](../README.md) para executar o ambiente, aplicar migrations e rodar os testes de integracao e de tipagem.
+
+## Organizacao da API de alagamento
+
+O fluxo de uma requisicao e **rota → controller → service → repository → banco**. Sensores e leituras possuem arquivos separados em cada camada dentro de `api-alagamento-inundacao/`:
+
+- **controllers/** recebe o JSON, valida sua estrutura com os contratos, chama o service e monta a resposta HTTP, serializando datas como strings ISO.
+- **services/** concentra as regras: normalizacao do nome, validade do timestamp, existencia do equipamento e compatibilidade da medida com o tipo cadastrado. Os services recebem repositories como dependencias e retornam objetos internos, sem depender de Express.
+- **repositories/** concentra as consultas e gravacoes Prisma. O repository de sensores traduz nome duplicado em erro conhecido; o de leituras inclui o sensor nos resultados e verifica a conexao com o banco.
+- **errors.ts** define codigos e mensagens dos erros conhecidos, sem status HTTP. Os controllers fazem a conversao para 400, 404 ou 409. Falhas inesperadas continuam retornando 500.
+- **app.ts** monta as dependencias e registra as rotas. Os handlers pequenos de health ficam aqui; readiness verifica a conexao pelo service e repository e retorna 503 quando o banco esta indisponivel.
+- **contracts.ts** define tipos de entrada/resposta e valida apenas a estrutura do JSON. A regra que seleciona a medida pelo tipo esta no service de leituras. **index.ts** continua criando a conexao Prisma e iniciando o servidor.
+
+Por exemplo, ao receber uma leitura de nivel na via, o controller valida `sensorId`, `timestamp` e `nivelAguaViaCm`; o service valida o instante e verifica se o equipamento existe e e `NIVEL_VIA`; o repository grava a leitura. O controller retorna o registro com o sensor associado e as datas serializadas.
+
+`npm run test:alagamento` executa build, verificacao de tipos e testes dos contratos, services e controllers sem exigir banco. O teste da migration roda somente com `TEST_DATABASE_URL` configurado. Os testes de service usam repositories simulados para verificar que falhas de timestamp, sensor ou medida impedem gravacao. Os testes de controller verificam status, mensagens e serializacao. A integracao HTTP com PostgreSQL continua em `npm test`, exigindo banco de testes com migrations aplicadas.
+
+Esta separacao foi aplicada somente a alagamento; qualidade do ar e transito mantem sua organizacao atual.

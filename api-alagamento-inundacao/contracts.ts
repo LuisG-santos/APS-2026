@@ -54,14 +54,3 @@ export function isAlagamentoBody(value: unknown): value is AlagamentoBody {
     (value.nivelCorregoCm === undefined && value.chuvaAcumuladaMm === undefined && isFiniteNumber(value.nivelAguaViaCm))
   )
 }
-
-export function medidaParaSensor(body: AlagamentoBody, tipo: TipoSensorAlagamento): MedidaAlagamento | null {
-  switch (tipo) {
-    case TipoSensorAlagamento.NIVEL_CORREGO:
-      return isFiniteNumber(body.nivelCorregoCm) ? { nivelCorregoCm: body.nivelCorregoCm } : null
-    case TipoSensorAlagamento.PLUVIOMETRO:
-      return isFiniteNumber(body.chuvaAcumuladaMm) ? { chuvaAcumuladaMm: body.chuvaAcumuladaMm } : null
-    case TipoSensorAlagamento.NIVEL_VIA:
-      return isFiniteNumber(body.nivelAguaViaCm) ? { nivelAguaViaCm: body.nivelAguaViaCm } : null
-  }
-}
