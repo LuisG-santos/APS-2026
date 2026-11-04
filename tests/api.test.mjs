@@ -14,11 +14,13 @@ if (!process.env.TEST_DATABASE_URL) {
 const apis = [
   {
     route: 'alagamento', model: 'alagamento', createApp: alagamento,
-    payload: { sensor: 'teste-alagamento', nivelCorregoCm: 120.5, chuvaAcumuladaMm: 35.2 }
+    sensorModel: 'sensorAlagamento', measures: [['NIVEL_CORREGO', 'nivelCorregoCm', 120.5], ['PLUVIOMETRO', 'chuvaAcumuladaMm', 35.2], ['NIVEL_VIA', 'nivelAguaViaCm', 8]],
+    payload: { nivelCorregoCm: 120.5 }
   },
   {
     route: 'qualidade-ar', model: 'qualidadeAr', createApp: qualidadeAr,
-    payload: { sensor: 'teste-ar', estacao: 'teste-estacao', mp25: 35.2, co: 0.8, no3: 12.4, temperatura: 27.5 }
+    sensorModel: 'sensorQualidadeAr', measures: [['MP25', 'mp25', 35.2], ['CO', 'co', 0.8], ['NO2', 'no2', 12.4], ['TEMPERATURA', 'temperatura', 27.5]],
+    payload: { mp25: 35.2 }
   },
   {
     route: 'transito', model: 'transito', createApp: transito,
@@ -56,6 +58,16 @@ before(async () => {
     sensores[tipo] = body
   }
   apis[2].payload.sensorId = sensores.RADAR.id
+  for (const api of apis.slice(0, 2)) {
+    api.sensorIds = []
+    api.sensores = {}
+    for (const [tipo] of api.measures) {
+      const result = await register(api, { nome: `${prefix}-${tipo}`, tipo, ...(api.model === 'qualidadeAr' ? { estacao: 'centro' } : {}) })
+      assert.equal(result.status, 201)
+      api.sensores[tipo] = result.body
+    }
+    api.payload.sensorId = api.sensores[api.measures[0][0]].id
+  }
 })
 
 after(async () => {
@@ -65,6 +77,7 @@ after(async () => {
     }
     try {
       await api.prisma[api.model].deleteMany({ where: { id: { in: api.ids } } })
+      if (api.sensorModel) await api.prisma[api.sensorModel].deleteMany({ where: { id: { in: api.sensorIds ?? [] } } })
       if (api.model === 'transito') {
         await api.prisma.sensorTransito.deleteMany({ where: { id: { in: sensorIds } } })
       }
@@ -177,7 +190,7 @@ for (const api of apis) {
     assert.notEqual(stored.timestamp.getTime(), stored.createdAt.getTime())
     const readings = await (await fetch(`${api.url}/get/${api.route}`)).json()
     assert.equal(readings.find(reading => reading.id === body.id).timestamp, timestamp)
-    if (api.model === 'qualidadeAr') assert.equal(stored.sensor, api.payload.sensor)
+    assert.equal(stored.sensorId, api.payload.sensorId)
     if (api.model === 'transito') assert.equal(Object.hasOwn(body, 'veiculo'), false)
   })
 
@@ -222,14 +235,6 @@ test('cadastro de sensores: rejeita corpos e tipos incorretos em tempo de execuc
   assert.equal(await apis[2].prisma.sensorTransito.count(), count)
 })
 
-test('qualidade-ar: sensor e obrigatorio e nao aceita identificacao vazia', async () => {
-  const api = apis[1]
-  for (const sensor of [undefined, null, '', '   ']) {
-    const { status } = await send(api, { ...api.payload, sensor, timestamp: '2026-01-15T09:30:00Z' })
-    assert.equal(status, 400)
-  }
-})
-
 test('as tres conexoes usam o mesmo banco com as tres tabelas', async () => {
   const names = await Promise.all(apis.map(async api => {
     const [row] = await api.prisma.$queryRaw`SELECT current_database() AS name`
@@ -242,10 +247,78 @@ test('as tres conexoes usam o mesmo banco com as tres tabelas', async () => {
     WHERE table_schema = 'public' AND table_name IN ('Alagamento', 'QualidadeAr', 'Transito')
   `
   assert.equal(columns.some(column => column.table_name === 'Transito' && column.column_name === 'veiculo'), false)
-  assert.equal(columns.find(column => column.table_name === 'QualidadeAr' && column.column_name === 'sensor').is_nullable, 'NO')
+  assert.equal(columns.find(column => column.table_name === 'QualidadeAr' && column.column_name === 'sensorId').is_nullable, 'NO')
   for (const table of ['Alagamento', 'QualidadeAr', 'Transito']) {
     const timestamp = columns.find(column => column.table_name === table && column.column_name === 'timestamp')
     assert.equal(timestamp.is_nullable, 'NO')
     assert.equal(timestamp.column_default, null)
   }
 })
+
+async function register(api, payload) {
+  const response = await fetch(`${api.url}/send/sensor`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+  })
+  const body = await response.json()
+  if (response.status === 201) api.sensorIds.push(body.id)
+  return { status: response.status, body }
+}
+
+for (const api of apis.slice(0, 2)) {
+  test(`${api.route}: cadastro, duplicidade e validacao dos sensores`, async () => {
+    const sensor = api.sensores[api.measures[0][0]]
+    assert.equal((await register(api, { nome: sensor.nome, tipo: sensor.tipo, estacao: 'centro' })).status, 409)
+    for (const payload of [[], {}, { nome: ' ', tipo: sensor.tipo, estacao: 'centro' },
+      { nome: `${prefix}-invalid`, tipo: 'DESCONHECIDO', estacao: 'centro' },
+      ...(api.model === 'qualidadeAr' ? [{ nome: `${prefix}-sem-estacao`, tipo: sensor.tipo },
+        { nome: `${prefix}-estacao-vazia`, tipo: sensor.tipo, estacao: ' ' }] : [])]) {
+      assert.equal((await register(api, payload)).status, 400)
+    }
+    const response = await fetch(`${api.url}/get/sensores`)
+    assert.equal(response.status, 200)
+    assert.ok((await response.json()).some(item => item.id === sensor.id))
+  })
+
+  test(`${api.route}: todas as medidas sao persistidas e consultadas separadamente`, async () => {
+    for (const [tipo, field, value] of api.measures) {
+      const sensor = api.sensores[tipo]
+      const result = await send(api, { sensorId: sensor.id, timestamp: '2026-01-15T09:30:00Z', [field]: value })
+      assert.equal(result.status, 201)
+      assert.equal(result.body.sensor.tipo, tipo)
+      assert.equal(typeof result.body.sensor.createdAt, 'string')
+      if (api.model === 'qualidadeAr') assert.equal(result.body.sensor.estacao, 'centro')
+      for (const [, measure] of api.measures) assert.equal(result.body[measure], measure === field ? value : null)
+      const rows = await (await fetch(`${api.url}/get/${api.route}`)).json()
+      assert.deepEqual(rows.find(row => row.id === result.body.id), result.body)
+      const stored = await api.prisma[api.model].findUniqueOrThrow({ where: { id: result.body.id } })
+      assert.equal(stored[field], value)
+    }
+  })
+
+  test(`${api.route}: rejeita sensor invalido e medidas ausentes, misturadas ou incompativeis`, async () => {
+    const timestamp = '2026-01-15T09:30:00Z'
+    const sensorId = api.payload.sensorId
+    const first = api.measures[0][1], second = api.measures[1][1]
+    const count = await api.prisma[api.model].count()
+    for (const id of [undefined, null, 0, -1, 1.5, '1', 2147483648]) {
+      assert.equal((await send(api, { ...api.payload, sensorId: id, timestamp })).status, 400)
+    }
+    assert.equal((await send(api, { ...api.payload, sensorId: 2147483647, timestamp })).status, 404)
+    for (const medidas of [{}, { [second]: 1 }, { [first]: 1, [second]: 2 }, { [first]: 1, [second]: null }]) {
+      assert.equal((await send(api, { sensorId, timestamp, ...medidas })).status, 400)
+    }
+    assert.equal(await api.prisma[api.model].count(), count)
+  })
+
+  test(`${api.route}: banco exige uma medida, chave estrangeira e preserva sensores em uso`, async () => {
+    const timestamp = new Date('2026-01-15T09:30:00Z')
+    const first = api.measures[0][1], second = api.measures[1][1]
+    for (const data of [{ sensorId: api.payload.sensorId, timestamp },
+      { sensorId: api.payload.sensorId, timestamp, [first]: 1, [second]: 2 },
+      { sensorId: 2147483647, timestamp, [first]: 1 }]) {
+      await assert.rejects(api.prisma[api.model].create({ data }))
+    }
+    await send(api, { ...api.payload, timestamp: timestamp.toISOString() })
+    await assert.rejects(api.prisma[api.sensorModel].delete({ where: { id: api.payload.sensorId } }))
+  })
+}
