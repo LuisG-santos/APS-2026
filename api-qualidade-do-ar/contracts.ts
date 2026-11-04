@@ -67,16 +67,3 @@ export function isQualidadeArBody(value: unknown): value is QualidadeArBody {
     (value.mp25 === undefined && value.co === undefined && value.no2 === undefined && isFiniteNumber(value.temperatura))
   )
 }
-
-export function medidaParaSensor(body: QualidadeArBody, tipo: TipoSensorQualidadeAr): MedidaQualidadeAr | null {
-  switch (tipo) {
-    case TipoSensorQualidadeAr.MP25:
-      return isFiniteNumber(body.mp25) ? { mp25: body.mp25 } : null
-    case TipoSensorQualidadeAr.CO:
-      return isFiniteNumber(body.co) ? { co: body.co } : null
-    case TipoSensorQualidadeAr.NO2:
-      return isFiniteNumber(body.no2) ? { no2: body.no2 } : null
-    case TipoSensorQualidadeAr.TEMPERATURA:
-      return isFiniteNumber(body.temperatura) ? { temperatura: body.temperatura } : null
-  }
-}
