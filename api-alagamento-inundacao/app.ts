@@ -53,7 +53,7 @@ export function createApp(prisma: PrismaClient): Express {
   app.post('/send/sensor', async (req: ApiRequest<SensorAlagamentoResponse>, res: ApiResponse<SensorAlagamentoResponse>): Promise<void> => {
     const body: unknown = req.body
     if (!isSensorAlagamentoBody(body)) {
-      res.status(400).json({ error: 'nome e tipo sao obrigatorios; tipo deve ser NIVEL, CHUVA' })
+      res.status(400).json({ error: 'nome e tipo sao obrigatorios; tipo deve ser NIVEL_CORREGO, PLUVIOMETRO ou NIVEL_VIA' })
       return
     }
 

@@ -8,8 +8,9 @@ datasource db {
 }
 
 enum TipoSensorAlagamento {
-  NIVEL
-  CHUVA
+  NIVEL_CORREGO
+  PLUVIOMETRO
+  NIVEL_VIA
 }
 
 model SensorAlagamento {
@@ -27,6 +28,7 @@ model Alagamento {
   timestamp        DateTime
   nivelCorregoCm   Float?
   chuvaAcumuladaMm Float?
+  nivelAguaViaCm   Float?
   createdAt        DateTime         @default(now())
 
   @@index([sensorId, timestamp])
@@ -35,7 +37,7 @@ model Alagamento {
 enum TipoSensorQualidadeAr {
   MP25
   CO
-  NO3
+  NO2
   TEMPERATURA
 }
 
@@ -43,6 +45,7 @@ model SensorQualidadeAr {
   id        Int                   @id @default(autoincrement())
   nome      String                @unique
   tipo      TipoSensorQualidadeAr
+  estacao   String
   leituras  QualidadeAr[]
   createdAt DateTime              @default(now())
 }
@@ -51,11 +54,10 @@ model QualidadeAr {
   id          Int               @id @default(autoincrement())
   sensorId    Int
   sensor      SensorQualidadeAr @relation(fields: [sensorId], references: [id], onDelete: Restrict)
-  estacao     String
   timestamp   DateTime
   mp25        Float?
   co          Float?
-  no3         Float?
+  no2         Float?
   temperatura Float?
   createdAt   DateTime          @default(now())
 

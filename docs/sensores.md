@@ -14,11 +14,12 @@ Todas oferecem `POST /send/sensor` e `GET /get/sensores` na respectiva porta.
 
 | API | Tipo no cadastro | Exemplo de nome | Campo enviado na leitura |
 |---|---|---|---|
-| Alagamento | `NIVEL` | `sensor-nivel` | `nivelCorregoCm` |
-| Alagamento | `CHUVA` | `pluviometro` | `chuvaAcumuladaMm` |
+| Alagamento | `NIVEL_CORREGO` | `sensor-nivel` | `nivelCorregoCm` |
+| Alagamento | `PLUVIOMETRO` | `pluviometro` | `chuvaAcumuladaMm` |
+| Alagamento | `NIVEL_VIA` | `sensor-nivel-via` | `nivelAguaViaCm` |
 | Qualidade do ar | `MP25` | `sensor-mp25` | `mp25` |
 | Qualidade do ar | `CO` | `sensor-co` | `co` |
-| Qualidade do ar | `NO3` | `sensor-no3` | `no3` |
+| Qualidade do ar | `NO2` | `sensor-no2` | `no2` |
 | Qualidade do ar | `TEMPERATURA` | `termometro` | `temperatura` |
 | Transito | `RADAR` | `radar` | `velocidade` |
 | Transito | `GPS` | `gps` | `posicao` |
@@ -33,7 +34,7 @@ Com o banco e as APIs ativos, execute na raiz do projeto. Os exemplos usam nomes
 Alagamento: cadastro do equipamento de nivel e envio da sua leitura:
 
 ```powershell
-$nivel = Invoke-RestMethod -Method Post -Uri 'http://localhost:3001/send/sensor' -ContentType 'application/json' -Body '{"nome":"nivel-teste","tipo":"NIVEL"}'
+$nivel = Invoke-RestMethod -Method Post -Uri 'http://localhost:3001/send/sensor' -ContentType 'application/json' -Body '{"nome":"nivel-teste","tipo":"NIVEL_CORREGO"}'
 $leituraNivel = @{
   sensorId = $nivel.id
   timestamp = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
@@ -45,7 +46,7 @@ Invoke-RestMethod -Method Post -Uri 'http://localhost:3001/send/alagamento' -Con
 Chuva: outro equipamento e outra requisicao:
 
 ```powershell
-$chuva = Invoke-RestMethod -Method Post -Uri 'http://localhost:3001/send/sensor' -ContentType 'application/json' -Body '{"nome":"pluviometro-teste","tipo":"CHUVA"}'
+$chuva = Invoke-RestMethod -Method Post -Uri 'http://localhost:3001/send/sensor' -ContentType 'application/json' -Body '{"nome":"pluviometro-teste","tipo":"PLUVIOMETRO"}'
 $leituraChuva = @{
   sensorId = $chuva.id
   timestamp = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
@@ -54,20 +55,31 @@ $leituraChuva = @{
 Invoke-RestMethod -Method Post -Uri 'http://localhost:3001/send/alagamento' -ContentType 'application/json' -Body $leituraChuva
 ```
 
-Qualidade do ar: um exemplo com o equipamento MP25. O campo `estacao` identifica o local da leitura e continua obrigatorio:
+Nivel de agua na via: cadastre `{"nome":"nivel-via-teste","tipo":"NIVEL_VIA"}` em `/send/sensor` e envie seu ID em uma leitura independente:
+
+```json
+{
+  "sensorId": 3,
+  "timestamp": "2026-11-04T12:00:00Z",
+  "nivelAguaViaCm": 8.0
+}
+```
+
+O ID e ilustrativo; use o retornado no cadastro. Os niveis usam cm relativos a uma referencia fixa de cada ponto. A chuva acumulada usa mm nos ultimos 60 minutos. O equipamento ou simulador deve manter essas referencias.
+
+Qualidade do ar: o campo `estacao` identifica o local do equipamento e e obrigatorio no cadastro, junto com nome e tipo:
 
 ```powershell
-$particulas = Invoke-RestMethod -Method Post -Uri 'http://localhost:3002/send/sensor' -ContentType 'application/json' -Body '{"nome":"particulas-teste","tipo":"MP25"}'
+$particulas = Invoke-RestMethod -Method Post -Uri 'http://localhost:3002/send/sensor' -ContentType 'application/json' -Body '{"nome":"particulas-teste","tipo":"MP25","estacao":"estacao-01"}'
 $leituraAr = @{
   sensorId = $particulas.id
-  estacao = 'estacao-01'
   timestamp = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
   mp25 = 35.2
 } | ConvertTo-Json
 Invoke-RestMethod -Method Post -Uri 'http://localhost:3002/send/qualidade-ar' -ContentType 'application/json' -Body $leituraAr
 ```
 
-Para as outras medidas do ar, cadastre equipamentos com `CO`, `NO3` ou `TEMPERATURA` e envie, respectivamente, somente `co`, `no3` ou `temperatura`, alem de `sensorId`, `estacao` e `timestamp`. Nao envie os quatro valores na mesma requisicao.
+Para as outras medidas do ar, cadastre equipamentos com `CO`, `NO2` ou `TEMPERATURA`, informando tambem sua estacao, e envie nas leituras, respectivamente, somente `co`, `no2` ou `temperatura`, alem de `sensorId` e `timestamp`. Nao envie os quatro valores na mesma requisicao.
 
 Os exemplos de radar, GPS e contador estao em [sensores de transito](sensores-transito.md).
 
@@ -82,7 +94,7 @@ Invoke-RestMethod 'http://localhost:3003/get/sensores'
 Invoke-RestMethod 'http://localhost:3003/get/transito'
 ```
 
-Cada leitura retorna `sensorId` e o objeto `sensor` com `id`, `nome`, `tipo` e `createdAt`. Somente o campo medido tem valor; os outros campos de medida ficam `null` na resposta. No POST, omita esses outros campos.
+Cada leitura retorna `sensorId` e o objeto `sensor` com `id`, `nome`, `tipo` e `createdAt`; qualidade do ar inclui tambem `sensor.estacao`. Na qualidade do ar, nome e estacao sao salvos sem espacos nas extremidades. PM2.5 e NO2 usam µg/m³, CO usa ppm e temperatura usa °C. O contrato antigo com `no3` ou `estacao` na leitura retorna HTTP 400. Somente o campo medido tem valor; os outros campos de medida ficam `null` na resposta. No POST, omita esses outros campos.
 
 O equipamento gera `timestamp` imediatamente antes do envio. A API salva esse instante e o devolve em UTC. `createdAt` registra separadamente quando o banco recebeu o registro.
 
@@ -108,6 +120,6 @@ python api-qualidade-do-ar/req.py
 python api-transito-e-transporte/req.py
 ```
 
-Cada execucao envia duas, quatro e tres leituras, respectivamente. Rodar de novo cria novas leituras e reutiliza os sensores. Se um nome ja estiver cadastrado com outro tipo, o simulador informa o conflito.
+Cada execucao envia tres, quatro e tres leituras, respectivamente. Rodar de novo cria novas leituras e reutiliza os sensores. Se um nome ja estiver cadastrado com outro tipo, o simulador informa o conflito. Qualidade do ar tambem verifica conflito de estacao, usando `estacao-01` nos quatro equipamentos.
 
 Consulte o [README](../README.md) para executar o ambiente, aplicar migrations e rodar os testes de integracao e de tipagem.

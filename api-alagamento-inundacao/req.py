@@ -38,8 +38,9 @@ def obter_sensor(base_url, nome, tipo):
 def enviar_leitura():
     base_url = os.environ.get("API_URL", "http://localhost:3001").rstrip("/")
     sensores = [
-        ("sensor-nivel", "NIVEL", {"nivelCorregoCm": 120.5}),
-        ("pluviometro", "CHUVA", {"chuvaAcumuladaMm": 35.2}),
+        ("sensor-nivel", "NIVEL_CORREGO", {"nivelCorregoCm": 120.5}),
+        ("pluviometro", "PLUVIOMETRO", {"chuvaAcumuladaMm": 35.2}),
+        ("sensor-nivel-via", "NIVEL_VIA", {"nivelAguaViaCm": 8.0}),
     ]
     for nome, tipo, medida in sensores:
         sensor = obter_sensor(base_url, nome, tipo)

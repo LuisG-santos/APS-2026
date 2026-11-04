@@ -5,42 +5,42 @@ import { isFiniteNumber, isNonEmptyString, isRecord, isSensorId } from '../share
 export interface SensorQualidadeArBody {
   nome: string
   tipo: TipoSensorQualidadeAr
+  estacao: string
 }
 
 export interface Mp25Medida {
   mp25: number
   co?: never
-  no3?: never
+  no2?: never
   temperatura?: never
 }
 
 export interface CoMedida {
   mp25?: never
   co: number
-  no3?: never
+  no2?: never
   temperatura?: never
 }
 
-export interface No3Medida {
+export interface No2Medida {
   mp25?: never
   co?: never
-  no3: number
+  no2: number
   temperatura?: never
 }
 
 export interface TemperaturaMedida {
   mp25?: never
   co?: never
-  no3?: never
+  no2?: never
   temperatura: number
 }
 
-export type MedidaQualidadeAr = Mp25Medida | CoMedida | No3Medida | TemperaturaMedida
+export type MedidaQualidadeAr = Mp25Medida | CoMedida | No2Medida | TemperaturaMedida
 
 export type QualidadeArBody = {
   sensorId: number
   timestamp: string
-  estacao: string
 } & MedidaQualidadeAr
 
 export type SensorQualidadeArResponse = CreatedJson<SensorQualidadeAr>
@@ -50,20 +50,21 @@ export type QualidadeArResponse = Omit<ReadingJson<QualidadeArComSensor>, 'senso
 }
 
 function isTipoSensor(value: unknown): value is TipoSensorQualidadeAr {
-  return value === TipoSensorQualidadeAr.MP25 || value === TipoSensorQualidadeAr.CO || value === TipoSensorQualidadeAr.NO3 || value === TipoSensorQualidadeAr.TEMPERATURA
+  return value === TipoSensorQualidadeAr.MP25 || value === TipoSensorQualidadeAr.CO || value === TipoSensorQualidadeAr.NO2 || value === TipoSensorQualidadeAr.TEMPERATURA
 }
 
 export function isSensorQualidadeArBody(value: unknown): value is SensorQualidadeArBody {
-  return isRecord(value) && isNonEmptyString(value.nome) && isTipoSensor(value.tipo)
+  return isRecord(value) && isNonEmptyString(value.nome) && isTipoSensor(value.tipo) && isNonEmptyString(value.estacao)
 }
 
 export function isQualidadeArBody(value: unknown): value is QualidadeArBody {
-  if (!isRecord(value) || !isSensorId(value.sensorId) || typeof value.timestamp !== 'string' || !isNonEmptyString(value.estacao)) return false
+  if (!isRecord(value) || !isSensorId(value.sensorId) || typeof value.timestamp !== 'string') return false
+  if ('no3' in value || 'estacao' in value) return false
   return (
-    (isFiniteNumber(value.mp25) && value.co === undefined && value.no3 === undefined && value.temperatura === undefined) ||
-    (value.mp25 === undefined && isFiniteNumber(value.co) && value.no3 === undefined && value.temperatura === undefined) ||
-    (value.mp25 === undefined && value.co === undefined && isFiniteNumber(value.no3) && value.temperatura === undefined) ||
-    (value.mp25 === undefined && value.co === undefined && value.no3 === undefined && isFiniteNumber(value.temperatura))
+    (isFiniteNumber(value.mp25) && value.co === undefined && value.no2 === undefined && value.temperatura === undefined) ||
+    (value.mp25 === undefined && isFiniteNumber(value.co) && value.no2 === undefined && value.temperatura === undefined) ||
+    (value.mp25 === undefined && value.co === undefined && isFiniteNumber(value.no2) && value.temperatura === undefined) ||
+    (value.mp25 === undefined && value.co === undefined && value.no2 === undefined && isFiniteNumber(value.temperatura))
   )
 }
 
@@ -73,8 +74,8 @@ export function medidaParaSensor(body: QualidadeArBody, tipo: TipoSensorQualidad
       return isFiniteNumber(body.mp25) ? { mp25: body.mp25 } : null
     case TipoSensorQualidadeAr.CO:
       return isFiniteNumber(body.co) ? { co: body.co } : null
-    case TipoSensorQualidadeAr.NO3:
-      return isFiniteNumber(body.no3) ? { no3: body.no3 } : null
+    case TipoSensorQualidadeAr.NO2:
+      return isFiniteNumber(body.no2) ? { no2: body.no2 } : null
     case TipoSensorQualidadeAr.TEMPERATURA:
       return isFiniteNumber(body.temperatura) ? { temperatura: body.temperatura } : null
   }

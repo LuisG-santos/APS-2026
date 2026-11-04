@@ -10,14 +10,22 @@ export interface SensorAlagamentoBody {
 export interface NivelMedida {
   nivelCorregoCm: number
   chuvaAcumuladaMm?: never
+  nivelAguaViaCm?: never
 }
 
 export interface ChuvaMedida {
   nivelCorregoCm?: never
   chuvaAcumuladaMm: number
+  nivelAguaViaCm?: never
 }
 
-export type MedidaAlagamento = NivelMedida | ChuvaMedida
+export interface NivelViaMedida {
+  nivelCorregoCm?: never
+  chuvaAcumuladaMm?: never
+  nivelAguaViaCm: number
+}
+
+export type MedidaAlagamento = NivelMedida | ChuvaMedida | NivelViaMedida
 
 export type AlagamentoBody = {
   sensorId: number
@@ -31,7 +39,7 @@ export type AlagamentoResponse = Omit<ReadingJson<AlagamentoComSensor>, 'sensor'
 }
 
 function isTipoSensor(value: unknown): value is TipoSensorAlagamento {
-  return value === TipoSensorAlagamento.NIVEL || value === TipoSensorAlagamento.CHUVA
+  return value === TipoSensorAlagamento.NIVEL_CORREGO || value === TipoSensorAlagamento.PLUVIOMETRO || value === TipoSensorAlagamento.NIVEL_VIA
 }
 
 export function isSensorAlagamentoBody(value: unknown): value is SensorAlagamentoBody {
@@ -41,16 +49,19 @@ export function isSensorAlagamentoBody(value: unknown): value is SensorAlagament
 export function isAlagamentoBody(value: unknown): value is AlagamentoBody {
   if (!isRecord(value) || !isSensorId(value.sensorId) || typeof value.timestamp !== 'string') return false
   return (
-    (isFiniteNumber(value.nivelCorregoCm) && value.chuvaAcumuladaMm === undefined) ||
-    (value.nivelCorregoCm === undefined && isFiniteNumber(value.chuvaAcumuladaMm))
+    (isFiniteNumber(value.nivelCorregoCm) && value.chuvaAcumuladaMm === undefined && value.nivelAguaViaCm === undefined) ||
+    (value.nivelCorregoCm === undefined && isFiniteNumber(value.chuvaAcumuladaMm) && value.nivelAguaViaCm === undefined) ||
+    (value.nivelCorregoCm === undefined && value.chuvaAcumuladaMm === undefined && isFiniteNumber(value.nivelAguaViaCm))
   )
 }
 
 export function medidaParaSensor(body: AlagamentoBody, tipo: TipoSensorAlagamento): MedidaAlagamento | null {
   switch (tipo) {
-    case TipoSensorAlagamento.NIVEL:
+    case TipoSensorAlagamento.NIVEL_CORREGO:
       return isFiniteNumber(body.nivelCorregoCm) ? { nivelCorregoCm: body.nivelCorregoCm } : null
-    case TipoSensorAlagamento.CHUVA:
+    case TipoSensorAlagamento.PLUVIOMETRO:
       return isFiniteNumber(body.chuvaAcumuladaMm) ? { chuvaAcumuladaMm: body.chuvaAcumuladaMm } : null
+    case TipoSensorAlagamento.NIVEL_VIA:
+      return isFiniteNumber(body.nivelAguaViaCm) ? { nivelAguaViaCm: body.nivelAguaViaCm } : null
   }
 }
