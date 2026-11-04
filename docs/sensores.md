@@ -124,9 +124,9 @@ Cada execucao envia tres, quatro e tres leituras, respectivamente. Rodar de novo
 
 Consulte o [README](../README.md) para executar o ambiente, aplicar migrations e rodar os testes de integracao e de tipagem.
 
-## Organizacao das APIs de alagamento e qualidade do ar
+## Organizacao das tres APIs
 
-O fluxo de uma requisicao e **rota → controller → service → repository → banco**. Sensores e leituras possuem arquivos separados em cada camada dentro de `api-alagamento-inundacao/` e `api-qualidade-do-ar/`:
+O fluxo de uma requisicao e **rota → controller → service → repository → banco**. Sensores e leituras possuem arquivos separados em cada camada dentro de `api-alagamento-inundacao/`, `api-qualidade-do-ar/` e `api-transito-e-transporte/`:
 
 - **controllers/** recebe o JSON, valida sua estrutura com os contratos, chama o service e monta a resposta HTTP, serializando datas como strings ISO.
 - **services/** concentra as regras: normalizacao do nome (e da estacao na qualidade do ar), validade do timestamp, existencia do equipamento e compatibilidade da medida com o tipo cadastrado. Os services recebem repositories como dependencias e retornam objetos internos, sem depender de Express.
@@ -137,8 +137,8 @@ O fluxo de uma requisicao e **rota → controller → service → repository →
 
 Por exemplo, ao receber uma leitura de nivel na via, o controller valida `sensorId`, `timestamp` e `nivelAguaViaCm`; o service valida o instante e verifica se o equipamento existe e e `NIVEL_VIA`; o repository grava a leitura. O controller retorna o registro com o sensor associado e as datas serializadas.
 
-`npm run test:alagamento` e `npm run test:qualidade-ar` executam build, verificacao de tipos e testes dos contratos, services e controllers sem exigir banco. Os testes das migrations rodam somente com `TEST_DATABASE_URL` configurado. Os testes de service usam repositories simulados para verificar que falhas de timestamp, sensor ou medida impedem gravacao. Os testes de controller verificam status, mensagens e serializacao. A integracao HTTP com PostgreSQL continua em `npm test`, exigindo banco de testes com migrations aplicadas.
+`npm run test:alagamento`, `npm run test:qualidade-ar` e `npm run test:transito` executam build, verificacao de tipos e testes dos contratos, services e controllers sem exigir banco. Os testes das migrations rodam somente com `TEST_DATABASE_URL` configurado. Os testes de service usam repositories simulados para verificar que falhas de timestamp, sensor ou medida impedem gravacao. Os testes de controller verificam status, mensagens e serializacao. A integracao HTTP com PostgreSQL continua em `npm test`, exigindo banco de testes com migrations aplicadas.
 
 Na qualidade do ar, o service de sensores remove espacos nas extremidades de nome e estacao. O service de leituras aceita a medida correspondente a `MP25`, `CO`, `NO2` ou `TEMPERATURA`; estacao continua apenas no cadastro e aparece na resposta em `sensor.estacao`. Os controllers preservam a rejeicao dos campos antigos `no3` e `estacao` no corpo da leitura. Cada API possui seus proprios erros e camadas, sem repository generico.
 
-Esta separacao foi aplicada a alagamento e qualidade do ar; transito mantem sua organizacao atual.
+As tres APIs seguem a mesma organizacao. No transito, o service aceita `velocidade` para `RADAR`, `posicao` para `GPS` e `ocupacao` para `OCUPACAO`, mantendo uma medida por leitura. Os controllers preservam os endpoints, status e mensagens existentes, com datas ISO e o sensor associado na resposta.
