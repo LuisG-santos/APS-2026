@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: aps-migrate-etapa3-v1
+  name: aps-migrate-etapa3-v2
   namespace: aps
 spec:
   backoffLimit: 6
@@ -15,7 +15,7 @@ spec:
       restartPolicy: OnFailure
       containers:
       - name: migrate
-        image: aps-migrate:etapa3-v1
+        image: aps-migrate:etapa3-v2
         imagePullPolicy: IfNotPresent
         command:
         - npm
