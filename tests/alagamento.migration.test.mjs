@@ -35,7 +35,7 @@ test('migration de alagamento preserva sensores e leituras ao renomear os tipos'
       await aplicar(tx, nomeMigration)
       const sensoresDepois = await tx.$queryRawUnsafe('SELECT * FROM "SensorAlagamento" ORDER BY "id"')
       assert.deepEqual(sensoresDepois, sensoresAntes.map(sensor => ({ ...sensor, tipo: sensor.tipo === 'NIVEL' ? 'NIVEL_CORREGO' : 'PLUVIOMETRO' })))
-      assert.deepEqual(await tx.$queryRawUnsafe('SELECT * FROM "Alagamento" ORDER BY "id"'), leiturasAntes.map(leitura => ({ ...leitura, nivelAguaViaCm: null })))
+      assert.deepEqual(await tx.$queryRawUnsafe('SELECT "id", "sensorId", "timestamp", "nivelCorregoCm", "chuvaAcumuladaMm", "nivelAguaViaCm", "createdAt" FROM "Alagamento" ORDER BY "id"'), leiturasAntes.map(leitura => ({ ...leitura, nivelAguaViaCm: null })))
       throw rollback
     }, { timeout: 30000 }), error => error === rollback)
   } finally {

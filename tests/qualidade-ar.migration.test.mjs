@@ -48,8 +48,8 @@ for (const comDados of [false, true]) {
         const outrasTabelas = ['Alagamento', 'SensorAlagamento', 'Transito', 'SensorTransito']
         const outrosAntes = await Promise.all(outrasTabelas.map(tabela => tx.$queryRawUnsafe(`SELECT * FROM "${tabela}" ORDER BY "id"`)))
         await aplicar(tx, nomeMigration)
-        const sensoresDepois = await tx.$queryRawUnsafe('SELECT * FROM "SensorQualidadeAr" ORDER BY "id"')
-        const leiturasDepois = await tx.$queryRawUnsafe('SELECT * FROM "QualidadeAr" ORDER BY "id"')
+        const sensoresDepois = await tx.$queryRawUnsafe('SELECT "id", "nome", "tipo", "estacao", "createdAt" FROM "SensorQualidadeAr" ORDER BY "id"')
+        const leiturasDepois = await tx.$queryRawUnsafe('SELECT "id", "sensorId", "timestamp", "mp25", "co", "no2", "temperatura", "createdAt" FROM "QualidadeAr" ORDER BY "id"')
         assert.equal(leiturasDepois.length, leiturasAntes.length)
         for (const antes of leiturasAntes) {
           const depois = leiturasDepois.find(leitura => leitura.id === antes.id)

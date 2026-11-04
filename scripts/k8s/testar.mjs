@@ -13,8 +13,8 @@ const context = 'docker-desktop'
 const prefix = `validacao-${Date.now()}`
 const base = 'http://127.0.0.1:18080'
 const configs = [
-  { name: 'api-alagamento', route: 'alagamento', port: 3001, extra: {}, fields: [['NIVEL','nivelCorregoCm',120.5],['CHUVA','chuvaAcumuladaMm',35.2]] },
-  { name: 'api-qualidade-ar', route: 'qualidade-ar', port: 3002, extra: {estacao:'validacao'}, fields: [['MP25','mp25',35.2],['CO','co',0.8],['NO3','no3',12.4],['TEMPERATURA','temperatura',27.5]] },
+  { name: 'api-alagamento', route: 'alagamento', port: 3001, extra: {}, fields: [['NIVEL_CORREGO','nivelCorregoCm',120.5],['PLUVIOMETRO','chuvaAcumuladaMm',35.2],['NIVEL_VIA','nivelAguaViaCm',8]] },
+  { name: 'api-qualidade-ar', route: 'qualidade-ar', port: 3002, extra: {}, cadastroExtra: {estacao:'validacao'}, fields: [['MP25','mp25',35.2],['CO','co',0.8],['NO2','no2',12.4],['TEMPERATURA','temperatura',27.5]] },
   { name: 'api-transito', route: 'transito', port: 3003, extra: {}, fields: [['RADAR','velocidade',42.5],['GPS','posicao','-23.55,-46.63'],['OCUPACAO','ocupacao',0.75]] }
 ]
 let forward
@@ -78,7 +78,7 @@ try {
     await ready('aps-gateway')
     const bank=await get('pod','banco-0'); assert.ok(bank.status.containerStatuses.every(c=>c.ready))
     const pvc=await get('pvc','dados-banco-0'); assert.equal(pvc.status.phase,'Bound')
-    const job=await waitFor('Job de migrations',async()=>{const j=await get('job','aps-migrate-etapa3-v1');return j.status.succeeded===1 && j},180)
+    const job=await waitFor('Job de migrations',async()=>{const j=await get('job','aps-migrate-etapa3-v2');return j.status.succeeded===1 && j},180)
     const ingress=await get('ingress','aps');assert.equal(ingress.spec.rules[0].http.paths.length,3)
     const api=JSON.parse(await kube('get','apiservice','v1beta1.metrics.k8s.io','-o','json'))
     assert.ok(api.status.conditions.some(c=>c.type==='Available' && c.status==='True'))
@@ -87,14 +87,14 @@ try {
   forward=spawn('kubectl',['--context',context,'port-forward','-n','aps','service/aps-gateway','18080:80'],{windowsHide:true,stdio:['ignore','pipe','pipe']})
   let forwardLog=''; forward.stdout.on('data',d=>forwardLog+=d);forward.stderr.on('data',d=>forwardLog+=d)
   await waitFor('port-forward',async()=>{if(forward.exitCode!==null) throw new Error(forwardLog); return (await fetch(`${base}/alagamento/health/live`,{signal:AbortSignal.timeout(1000)})).ok},60)
-  await step('Ingress e nove tipos de sensor',async()=>{
+  await step('Ingress e dez tipos de sensor',async()=>{
     let readings=0
     for(const c of configs) {
       assert.equal((await http(c.route,'/health/live')).status,'ok')
       assert.equal((await http(c.route,'/health/ready')).status,'ready')
       c.readings=[]
       for(const [tipo,field,value] of c.fields) {
-        const cadastro={nome:`${prefix}-${tipo}`,tipo}
+        const cadastro={nome:`${prefix}-${tipo}`,tipo,...c.cadastroExtra}
         const sensor=await http(c.route,'/send/sensor',cadastro)
         await http(c.route,'/send/sensor',cadastro,409)
         const timestamp='2026-01-15T09:30:00.123Z'
@@ -116,7 +116,7 @@ try {
         assert.ok(sensors.some(s=>s.id===reading.sensorId))
       }
     }
-    return {readings,types:9,checks:['POST','GET','duplicado 409','sensor inexistente 404','medidas invalidas 400','timestamp preservado']}
+    return {readings,types:10,checks:['POST','GET','duplicado 409','sensor inexistente 404','medidas invalidas 400','timestamp preservado']}
   })
   await step('Persistencia apos excluir banco-0',async()=>{
     const before=await get('pod','banco-0');const pvc=await get('pvc','dados-banco-0')
@@ -128,7 +128,7 @@ try {
       const stored=await http(c.route,`/get/${c.route}`)
       for(const reading of c.readings) assert.deepEqual(stored.find(r=>r.id===reading.id),reading)
     }
-    return {oldPod:before.metadata.uid,newPod:after.metadata.uid,pvc:pvc.metadata.uid,readingsPreserved:9}
+    return {oldPod:before.metadata.uid,newPod:after.metadata.uid,pvc:pvc.metadata.uid,readingsPreserved:10}
   })
   await step('Readiness sem reinicios durante falha do banco',async()=>{
     const before=await allPods()
