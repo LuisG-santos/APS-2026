@@ -1,3 +1,4 @@
+import { semCache, type Cache } from '../shared/cache.js'
 import express, { type Express } from 'express'
 import type { PrismaClient } from '@prisma/client'
 import type { ApiRequest, ApiResponse, LiveResponse, ReadyResponse } from '../shared/http.js'
@@ -8,8 +9,8 @@ import { createLeiturasService } from './services/leituras.service.js'
 import { createSensoresRepository } from './repositories/sensores.repository.js'
 import { createLeiturasRepository } from './repositories/leituras.repository.js'
 
-export function createApp(prisma: PrismaClient): Express {
-  const sensoresRepository = createSensoresRepository(prisma)
+export function createApp(prisma: PrismaClient, cache: Cache = semCache): Express {
+  const sensoresRepository = createSensoresRepository(prisma, cache)
   const leiturasRepository = createLeiturasRepository(prisma)
   const sensoresService = createSensoresService(sensoresRepository)
   const leiturasService = createLeiturasService(leiturasRepository, sensoresRepository)
