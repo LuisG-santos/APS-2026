@@ -17,7 +17,7 @@ metadata:
   name: api-transito
   namespace: aps
 spec:
-  replicas: 1
+  # A quantidade de replicas e controlada pelo HPA em 09-autoscaling.yaml.
   revisionHistoryLimit: 3
   minReadySeconds: 5
   selector:
