@@ -169,10 +169,16 @@ try {
     const targets=[]
     for(const c of configs) {
       const hpa=await waitFor(`metricas ${c.name}`,async()=>{const h=await get('hpa',c.name);return h.status.currentMetrics?.some(m=>m.resource?.current?.averageUtilization!==undefined) && h},120)
+      assert.equal(hpa.spec.minReplicas,2)
+      assert.equal(hpa.spec.maxReplicas,10)
+      assert.ok(hpa.spec.metrics.some(m=>m.type==='Resource' && m.resource?.name==='cpu' && m.resource?.target?.averageUtilization===60))
       targets.push({name:c.name,cpu:hpa.status.currentMetrics})
     }
     const scaling=[]
     for(const c of configs) {
+      await ready(c.name)
+      const initialReplicas=(await get('deployment',c.name)).spec.replicas
+      assert.ok(initialReplicas<10,`Sem margem para observar aumento: ${c.name} ja esta no maximo de replicas; aguarde a reducao apos a carga anterior`)
       const load=spawn(process.execPath,[path.join(project,'scripts/k8s/carga.mjs'),`${base}/${c.route}/get/sensores`,'180','64'],{windowsHide:true,stdio:['ignore','pipe','pipe','ipc']})
       let log='';load.stdout.on('data',d=>{log+=d;console.log(d.toString().trim())});load.stderr.on('data',d=>log+=d)
       const observed=[]
@@ -181,7 +187,7 @@ try {
         while(load.exitCode===null) {
           const hpa=await get('hpa',c.name);const d=await get('deployment',c.name)
           observed.push({time:new Date().toISOString(),current:hpa.status.currentReplicas,desired:hpa.status.desiredReplicas,cpu:hpa.status.currentMetrics,ready:d.status.availableReplicas})
-          if(hpa.status.desiredReplicas>=2 && d.status.availableReplicas>=2) scaled=true
+          if(hpa.status.desiredReplicas>initialReplicas && d.status.availableReplicas>initialReplicas) scaled=true
           if(scaled) {
             await sleep(10000)
             break
@@ -199,7 +205,7 @@ try {
       const access=await kube('logs','-n','aps','deployment/aps-gateway','--tail=200')
       const addresses=[...new Set(access.split(/\r?\n/).filter(l=>l.startsWith('{')).map(l=>{try{return JSON.parse(l)}catch{return {}}}).filter(l=>l.ServiceName?.includes(c.name)).map(l=>l.ServiceAddr).filter(Boolean))]
       assert.ok(addresses.length>=2,`Balanceamento nao evidenciado: ${c.name} ${addresses}`)
-      scaling.push({api:c.name,observed,backendAddresses:addresses,load:loadSummary})
+      scaling.push({api:c.name,initialReplicas,observed,backendAddresses:addresses,load:loadSummary})
       console.log(`HPA E BALANCEAMENTO APROVADOS ${c.name}`)
     }
     return {targets,scaling}

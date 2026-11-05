@@ -8,8 +8,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: api-alagamento
-  minReplicas: 1
-  maxReplicas: 3
+  minReplicas: 2
+  maxReplicas: 10
   metrics:
   - type: Resource
     resource:
@@ -41,8 +41,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: api-qualidade-ar
-  minReplicas: 1
-  maxReplicas: 3
+  minReplicas: 2
+  maxReplicas: 10
   metrics:
   - type: Resource
     resource:
@@ -74,8 +74,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: api-transito
-  minReplicas: 1
-  maxReplicas: 3
+  minReplicas: 2
+  maxReplicas: 10
   metrics:
   - type: Resource
     resource:
