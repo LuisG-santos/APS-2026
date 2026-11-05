@@ -16,7 +16,7 @@ Esta etapa acrescenta a orquestracao das imagens da etapa 2. As APIs, os contrat
 | ConfigMap comum | `01-configmap.yaml`, com ambiente, banco e portas |
 | Credenciais em Secret, fora do repositorio | `.env.k8s` e `k8s/02-secret.local.yaml`, ambos ignorados pelo Git; modelo em `scripts/k8s/secret.example.yaml` |
 | Banco persistente em StatefulSet | `03-banco.yaml`, PostgreSQL unico, PVC `dados-banco-0` de 1 GiB e retencao do volume |
-| HPA por CPU e metrics-server respondendo | `09-autoscaling.yaml` e `10-metrics-server-local.yaml`; um HPA por API, de 1 a 3 replicas, alvo de 60% |
+| HPA por CPU e metrics-server respondendo | `09-autoscaling.yaml` e `10-metrics-server-local.yaml`; um HPA por API, de 2 a 10 replicas, alvo de 60% |
 | Schema pronto antes das APIs | Job `aps-migrate-etapa3-v2`; initContainers aguardam todas as migrations da imagem estarem aplicadas |
 
 O namespace da aplicacao e `aps`. O metrics-server usa `kube-system` e registra a API de metricas no cluster. Os manifests desta pasta foram preparados para um cluster local Docker Desktop, com Kubernetes 1.34 ou superior.
@@ -216,6 +216,19 @@ kubectl get hpa -n aps
 
 Na primeira inicializacao as metricas podem levar alguns instantes para aparecer. Se `kubectl top` falhar ou o HPA continuar com `<unknown>`, consulte `kubectl logs -n kube-system deployment/metrics-server` e `kubectl describe hpa -n aps`.
 
+Os tres HPAs mantem pelo menos duas replicas por API e permitem ate dez conforme a CPU. Os Deployments das APIs omitem `spec.replicas` para que reaplicar os manifests nao sobrescreva a quantidade escolhida pelo HPA. Em uma instalacao nova, aguarde o HPA ajustar a quantidade inicial.
+
+Para atualizar um cluster existente que ainda usa os manifests antigos com `replicas: 1`, transfira primeiro esse controle sem reduzir as replicas atuais:
+
+```powershell
+kubectl apply -f k8s/09-autoscaling.yaml
+kubectl apply set-last-applied -f k8s/05-api-alagamento.yaml -f k8s/06-api-qualidade-ar.yaml -f k8s/07-api-transito.yaml
+kubectl apply -f k8s/05-api-alagamento.yaml -f k8s/06-api-qualidade-ar.yaml -f k8s/07-api-transito.yaml
+kubectl get hpa,deployments -n aps
+```
+
+O passo `set-last-applied` e necessario somente nessa transicao: atualiza o historico do `kubectl apply` para nao interpretar a retirada de `replicas` como uma solicitacao de retorno a uma replica. Depois, as atualizacoes continuam com `kubectl apply -f k8s/`.
+
 Com o encaminhamento da porta ainda ativo, gere requisicoes por tres minutos:
 
 ```powershell
@@ -230,7 +243,7 @@ kubectl get hpa -n aps -w
 kubectl get pods -n aps -l app=api-alagamento -w
 ```
 
-O alvo e 60% do request de 100m de CPU, isto e, aproximadamente 60m por Pod. O HPA pode aumentar ate tres replicas quando a CPU observada exceder o alvo. Se a carga nao atingir o alvo, aumente a concorrencia para 64 ou a duracao; observe as metricas em vez de assumir que houve escala. Depois da carga, a janela de estabilizacao de reducao e de 120 segundos.
+O alvo e 60% do request de 100m de CPU, isto e, aproximadamente 60m por Pod. O HPA pode aumentar de duas ate dez replicas quando a CPU observada exceder o alvo. Para demonstrar escala, registre a quantidade antes da carga e observe um aumento acima dela; duas replicas ja sao o minimo e, sozinhas, nao comprovam escalonamento. Se a carga nao atingir o alvo, aumente a concorrencia para 64 ou a duracao; observe as metricas em vez de assumir que houve escala. Depois da carga, a janela de estabilizacao de reducao e de 120 segundos, com reducao gradual ate o minimo de duas replicas.
 
 Com mais de uma replica pronta, os logs de acesso do Traefik permitem conferir os diferentes enderecos de backend:
 
