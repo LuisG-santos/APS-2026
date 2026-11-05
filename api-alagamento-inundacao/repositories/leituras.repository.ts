@@ -10,7 +10,14 @@ export function createLeiturasRepository(prisma: PrismaClient) {
     },
     criar(leitura: NovaLeitura) {
       const data: Prisma.AlagamentoUncheckedCreateInput = leitura
-      return prisma.alagamento.create({ data, include: { sensor: true } })
+      const valor = leitura.nivelCorregoCm
+      if (valor === undefined) return prisma.alagamento.create({ data, include: { sensor: true } })
+      return prisma.$transaction(async tx => {
+        const criada = await tx.alagamento.create({ data, include: { sensor: true } })
+        await tx.tarefaAlerta.create({ data: { dominio: 'ALAGAMENTO', leituraId: criada.id,
+          sensorId: criada.sensorId, valor, timestamp: criada.timestamp } })
+        return criada
+      })
     },
     async verificarConexao(): Promise<void> {
       await prisma.$queryRaw`SELECT 1`
