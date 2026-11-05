@@ -1,3 +1,6 @@
+import { createAlertasRepository } from '../shared/alertas/alertas.repository.js'
+import { createAlertasService } from '../shared/alertas/alertas.service.js'
+import { createAlertasController } from '../shared/alertas/alertas.controller.js'
 import { semCache, type Cache } from '../shared/cache.js'
 import express, { type Express } from 'express'
 import type { PrismaClient } from '@prisma/client'
@@ -34,6 +37,9 @@ export function createApp(prisma: PrismaClient, cache: Cache = semCache): Expres
     }
   })
 
+  const alertasService = createAlertasService(createAlertasRepository(prisma))
+  const alertasController = createAlertasController(alertasService, 'QUALIDADE_AR')
+  app.get('/get/alertas', alertasController.listar)
   app.get('/get/sensores', sensoresController.listar)
   app.post('/send/sensor', sensoresController.cadastrar)
   app.get('/get/qualidade-ar', leiturasController.listar)
