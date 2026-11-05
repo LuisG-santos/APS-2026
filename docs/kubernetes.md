@@ -8,7 +8,7 @@ Esta etapa acrescenta a orquestracao das imagens da etapa 2. As APIs, os contrat
 |---|---|
 | Aplicar a pasta com um comando | `kubectl apply -f k8s/`, depois da preparacao das imagens e do Secret local |
 | Um Deployment e um Service por servico, minimo tres | `05-api-alagamento.yaml`, `06-api-qualidade-ar.yaml`, `07-api-transito.yaml` |
-| Imagens de tag fixa | Quatro imagens do projeto com `:etapa3-v2`; PostgreSQL `16.14-bookworm`, Traefik `v3.7.15`, metrics-server `v0.9.0` |
+| Imagens de tag fixa | APIs com `:etapa3-v4`, migration com `:etapa3-v2`; PostgreSQL `16.14-bookworm`, Traefik `v3.7.15`, metrics-server `v0.9.0` |
 | Ingress como entrada unica e roteamento por caminho | `08-gateway.yaml`, classe `aps-traefik`, controller Traefik e tres prefixos |
 | Probes de liveness e readiness distintas | Nas APIs: `/health/live` verifica o processo; `/health/ready` executa `SELECT 1` no banco a cada chamada |
 | Requests e limits de CPU e memoria | Configurados em todos os containers, incluindo initContainers, Job, banco, gateway e metrics-server |
@@ -17,6 +17,7 @@ Esta etapa acrescenta a orquestracao das imagens da etapa 2. As APIs, os contrat
 | Credenciais em Secret, fora do repositorio | `.env.k8s` e `k8s/02-secret.local.yaml`, ambos ignorados pelo Git; modelo em `scripts/k8s/secret.example.yaml` |
 | Banco persistente em StatefulSet | `03-banco.yaml`, PostgreSQL unico, PVC `dados-banco-0` de 1 GiB e retencao do volume |
 | HPA por CPU e metrics-server respondendo | `09-autoscaling.yaml` e `10-metrics-server-local.yaml`; um HPA por API, de 2 a 10 replicas, alvo de 60% |
+| Cache compartilhado entre replicas | `11-cache.yaml`, Redis `8.2.3-alpine`, usado em `GET /get/sensores`; a fila de mensagens ainda esta pendente |
 | Schema pronto antes das APIs | Job `aps-migrate-etapa3-v2`; initContainers aguardam todas as migrations da imagem estarem aplicadas |
 
 O namespace da aplicacao e `aps`. O metrics-server usa `kube-system` e registra a API de metricas no cluster. Os manifests desta pasta foram preparados para um cluster local Docker Desktop, com Kubernetes 1.34 ou superior.
@@ -33,6 +34,9 @@ flowchart LR
     PA --> DB[Service banco]
     PQ --> DB
     PT --> DB
+    PA --> Cache[Service cache / Redis]
+    PQ --> Cache
+    PT --> Cache
     DB --> PG[StatefulSet PostgreSQL]
     PG --> PVC[PVC dados-banco-0]
 ```
@@ -90,6 +94,7 @@ kubectl apply -f k8s/
 Acompanhe a primeira inicializacao:
 
 ```powershell
+kubectl rollout status deployment/cache -n aps --timeout=180s
 kubectl rollout status statefulset/banco -n aps --timeout=300s
 kubectl wait -n aps --for=condition=complete job/aps-migrate-etapa3-v2 --timeout=600s
 kubectl rollout status deployment/api-alagamento -n aps --timeout=300s
@@ -311,3 +316,7 @@ Os manifests e o script de build agora usam `etapa3-v2`, com Job `aps-migrate-et
 Na atualizacao do ambiente existente, foi salvo um backup e as APIs foram pausadas durante as duas migrations que renomeiam campos, evitando acesso da versao antiga ao novo schema. Depois do Job concluir, os Deployments foram reativados com as novas imagens. Banco e PVC foram mantidos.
 
 Validacao concluida: build, tipos e 110 testes passaram, incluindo integracao PostgreSQL e preservacao de dados nas migrations. Pelo gateway NodePort 30080, foram validados cadastro e leitura dos dez tipos, consultas, erros 400/404/409 e healthchecks. Somente os registros temporarios dessa validacao foram removidos. As leituras originais permaneceram: 2 de alagamento, 4 de qualidade do ar e 3 de transito.
+
+## Cache Redis
+
+Consulte [cache de sensores](cache.md) para acompanhar chaves, expiracao, invalidacao e o comportamento quando o Redis esta indisponivel. A readiness das APIs continua verificando o banco a cada chamada: Redis e uma otimizacao opcional, com consulta direta ao banco em caso de falha.

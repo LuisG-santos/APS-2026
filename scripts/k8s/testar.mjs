@@ -76,6 +76,7 @@ try {
   await step('Inicializacao e recursos',async()=>{
     for(const c of configs) await ready(c.name)
     await ready('aps-gateway')
+    await ready('cache')
     const bank=await get('pod','banco-0'); assert.ok(bank.status.containerStatuses.every(c=>c.ready))
     const pvc=await get('pvc','dados-banco-0'); assert.equal(pvc.status.phase,'Bound')
     const job=await waitFor('Job de migrations',async()=>{const j=await get('job','aps-migrate-etapa3-v2');return j.status.succeeded===1 && j},180)

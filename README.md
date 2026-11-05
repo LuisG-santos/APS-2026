@@ -12,7 +12,7 @@ As tres APIs oferecem `POST /send/sensor` para cadastrar equipamentos com nome e
 
 ## Etapa 3 - Kubernetes
 
-A pasta `k8s/` acrescenta a implantacao no Docker Desktop: um Deployment e um Service por API, Ingress com Traefik, banco unico em StatefulSet com volume persistente, ConfigMap, Secret local, Job de migrations e HPA por CPU nas tres APIs, com metrics-server. As regras e os contratos das APIs continuam os mesmos.
+A pasta `k8s/` acrescenta a implantacao no Docker Desktop: um Deployment e um Service por API, Ingress com Traefik, banco unico em StatefulSet com volume persistente, ConfigMap, Secret local, Job de migrations e HPA por CPU nas tres APIs, com metrics-server e cache Redis compartilhado. As regras e os contratos das APIs continuam os mesmos.
 
 Depois de habilitar o cluster, construir as imagens e gerar o Secret local, aplique tudo com `kubectl apply -f k8s/`. O [guia da etapa 3](docs/kubernetes.md) explica a preparacao, o acesso e os testes para a demonstracao.
 
@@ -43,6 +43,12 @@ Invoke-RestMethod http://localhost:3003/health/ready
 ```
 
 Cada API possui `/health/live` para verificar o processo e `/health/ready` para verificar a conexao com o banco.
+
+## Cache de sensores
+
+No Kubernetes, `GET /get/sensores` usa Redis compartilhado pelas replicas de cada API. O resultado expira em 15 segundos e o cadastro de um sensor invalida a lista do seu dominio. As consultas de leituras continuam acessando o banco. Se o Redis falhar, a API consulta o PostgreSQL. Os endpoints e o formato do JSON foram preservados.
+
+Fora do Kubernetes, o cache e opcional: deixe `REDIS_URL` vazio para executar sem Redis. O Compose permanece sem cache nesta etapa. Veja a [explicacao e a demonstracao do cache](docs/cache.md). A fila de mensagens ainda e a proxima etapa do item 12.
 
 ## Timestamp das leituras
 
