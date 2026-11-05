@@ -11,9 +11,9 @@ try {
 
     $images = @(
         @{ Tag = 'aps-migrate:etapa3-v2'; Dockerfile = 'api-alagamento-inundacao/Dockerfile'; Target = 'migrate' },
-        @{ Tag = 'aps-alagamento:etapa3-v2'; Dockerfile = 'api-alagamento-inundacao/Dockerfile'; Target = 'runtime' },
-        @{ Tag = 'aps-qualidade-ar:etapa3-v2'; Dockerfile = 'api-qualidade-do-ar/Dockerfile'; Target = 'runtime' },
-        @{ Tag = 'aps-transito:etapa3-v2'; Dockerfile = 'api-transito-e-transporte/Dockerfile'; Target = 'runtime' }
+        @{ Tag = 'aps-alagamento:etapa3-v4'; Dockerfile = 'api-alagamento-inundacao/Dockerfile'; Target = 'runtime' },
+        @{ Tag = 'aps-qualidade-ar:etapa3-v4'; Dockerfile = 'api-qualidade-do-ar/Dockerfile'; Target = 'runtime' },
+        @{ Tag = 'aps-transito:etapa3-v4'; Dockerfile = 'api-transito-e-transporte/Dockerfile'; Target = 'runtime' }
     )
     foreach ($image in $images) {
         & docker build --file $image.Dockerfile --target $image.Target --tag $image.Tag .
