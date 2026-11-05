@@ -90,3 +90,36 @@ model Transito {
 
   @@index([sensorId, timestamp])
 }
+
+enum DominioAlerta {
+  ALAGAMENTO
+  QUALIDADE_AR
+  TRANSITO
+}
+
+// Trabalho gravado junto com a leitura e removido somente apos confirmacao da fila.
+model TarefaAlerta {
+  id        Int           @id @default(autoincrement())
+  dominio   DominioAlerta
+  leituraId Int
+  sensorId  Int
+  valor     Float
+  timestamp DateTime
+  createdAt DateTime      @default(now())
+
+  @@unique([dominio, leituraId])
+}
+
+model Alerta {
+  id        Int           @id @default(autoincrement())
+  dominio   DominioAlerta
+  leituraId Int
+  sensorId  Int
+  valor     Float
+  limite    Float
+  timestamp DateTime
+  createdAt DateTime      @default(now())
+
+  @@unique([dominio, leituraId])
+  @@index([dominio, sensorId, timestamp])
+}

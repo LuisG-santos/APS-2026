@@ -12,9 +12,9 @@ As tres APIs oferecem `POST /send/sensor` para cadastrar equipamentos com nome e
 
 ## Etapa 3 - Kubernetes
 
-A pasta `k8s/` acrescenta a implantacao no Docker Desktop: um Deployment e um Service por API, Ingress com Traefik, banco unico em StatefulSet com volume persistente, ConfigMap, Secret local, Job de migrations e HPA por CPU nas tres APIs, com metrics-server e cache Redis compartilhado. As regras e os contratos das APIs continuam os mesmos.
+A pasta `k8s/` acrescenta a implantacao no Docker Desktop: um Deployment e um Service por API, Ingress com Traefik, banco unico em StatefulSet com volume persistente, ConfigMap, Secrets locais, Job de migrations e HPA por CPU nas tres APIs, com metrics-server, cache Redis compartilhado, RabbitMQ persistente e worker de alertas. Os contratos de cadastro e ingestao das APIs continuam os mesmos.
 
-Depois de habilitar o cluster, construir as imagens e gerar o Secret local, aplique tudo com `kubectl apply -f k8s/`. O [guia da etapa 3](docs/kubernetes.md) explica a preparacao, o acesso e os testes para a demonstracao.
+Depois de habilitar o cluster, construir as imagens, gerar o Secret do banco e executar `node scripts/k8s/gerar-secret-fila.mjs`, aplique tudo com `kubectl apply -f k8s/`. O [guia da etapa 3](docs/kubernetes.md) explica a preparacao, o acesso e os testes para a demonstracao.
 
 Os [resultados dos testes executados](docs/resultados-testes.md) registram a validacao das APIs, persistencia, probes, RollingUpdate, HPA e balanceamento no Docker Desktop.
 
@@ -48,7 +48,11 @@ Cada API possui `/health/live` para verificar o processo e `/health/ready` para 
 
 No Kubernetes, `GET /get/sensores` usa Redis compartilhado pelas replicas de cada API. O resultado expira em 15 segundos e o cadastro de um sensor invalida a lista do seu dominio. As consultas de leituras continuam acessando o banco. Se o Redis falhar, a API consulta o PostgreSQL. Os endpoints e o formato do JSON foram preservados.
 
-Fora do Kubernetes, o cache e opcional: deixe `REDIS_URL` vazio para executar sem Redis. O Compose permanece sem cache nesta etapa. Veja a [explicacao e a demonstracao do cache](docs/cache.md). A fila de mensagens ainda e a proxima etapa do item 12.
+Fora do Kubernetes, o cache e opcional: deixe `REDIS_URL` vazio para executar sem Redis. O Compose permanece sem cache nesta etapa. Veja a [explicacao e a demonstracao do cache](docs/cache.md). RabbitMQ e um worker separado processam alertas simples; veja o [fluxo e as novas consultas](docs/alertas.md).
+
+## Alertas assincronos
+
+As APIs salvam um trabalho junto com cada leitura de NIVEL_CORREGO, MP25 ou OCUPACAO. O worker publica esses trabalhos no RabbitMQ e gera alertas acima dos limites de demonstracao: 150 cm, 35 microgramas/m3 e ocupacao 0,80. Cada API oferece `GET /get/alertas`, sem body, restrito ao seu dominio. Veja [execucao, falhas e exemplos no Postman](docs/alertas.md).
 
 ## Timestamp das leituras
 

@@ -74,6 +74,10 @@ after(async () => {
       await new Promise((resolve, reject) => api.server.close(error => error ? reject(error) : resolve()))
     }
     try {
+      const dominio = { alagamento: 'ALAGAMENTO', 'qualidade-ar': 'QUALIDADE_AR', transito: 'TRANSITO' }[api.route]
+      const where = { dominio, leituraId: { in: api.ids } }
+      await api.prisma.tarefaAlerta.deleteMany({ where })
+      await api.prisma.alerta.deleteMany({ where })
       await api.prisma[api.model].deleteMany({ where: { id: { in: api.ids } } })
       await api.prisma[api.sensorModel].deleteMany({ where: { id: { in: api.sensorIds } } })
     } finally {

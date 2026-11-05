@@ -46,3 +46,10 @@ USER node
 EXPOSE 3001
 
 CMD ["node", "dist/api-alagamento-inundacao/index.js"]
+
+FROM runtime AS worker
+EXPOSE 3004
+CMD ["node", "dist/shared/alertas/index.js"]
+
+# O build sem --target continua iniciando a API, como no Compose.
+FROM runtime AS production

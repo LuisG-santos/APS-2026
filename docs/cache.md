@@ -22,7 +22,7 @@ O TTL limita a desatualizacao caso uma leitura concorrente reponha uma lista ant
 
 Este Redis nao tem autenticacao e nao e publicado no Ingress nem em NodePort. A configuracao destina-se ao cluster local da faculdade; para outros ambientes, devem ser definidos autenticacao e controles de rede.
 
-As APIs com cache usam as imagens `:etapa3-v4`; o Job e os initContainers de migrations permanecem em `aps-migrate:etapa3-v2`, pois o schema nao mudou. Depois de construir as imagens pelo script habitual:
+Os manifests atuais ja incluem a etapa de fila e alertas: APIs e migration usam `etapa3-v5`, e o worker usa `etapa3-v5.1`. Siga o [guia de alertas](alertas.md) para preparar as imagens, o Secret e a migration. Em um cluster ja preparado, os comandos abaixo atualizam o cache e as APIs:
 
 ```powershell
 kubectl apply -f k8s/11-cache.yaml -f k8s/01-configmap.yaml
@@ -65,7 +65,7 @@ npm run test:cache
 
 O teste com Redis sobe duas instancias HTTP de cada API com persistencia simulada, compartilhando Redis, e verifica serializacao, invalidacao entre replicas, expiracao e fallback. Sem `TEST_REDIS_URL`, somente essa integracao e ignorada. Nao substitui os testes PostgreSQL existentes, que dependem de `TEST_DATABASE_URL`.
 
-A fila de mensagens sera implementada na proxima etapa. O item 12 da ficha ainda fica parcialmente pendente.
+A fila foi acrescentada na etapa seguinte: veja [RabbitMQ e alertas](alertas.md). Redis continua exclusivamente como cache.
 
 ## Validacao executada em 05/11/2026
 

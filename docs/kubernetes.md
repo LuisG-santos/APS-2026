@@ -8,7 +8,7 @@ Esta etapa acrescenta a orquestracao das imagens da etapa 2. As APIs, os contrat
 |---|---|
 | Aplicar a pasta com um comando | `kubectl apply -f k8s/`, depois da preparacao das imagens e do Secret local |
 | Um Deployment e um Service por servico, minimo tres | `05-api-alagamento.yaml`, `06-api-qualidade-ar.yaml`, `07-api-transito.yaml` |
-| Imagens de tag fixa | APIs com `:etapa3-v4`, migration com `:etapa3-v2`; PostgreSQL `16.14-bookworm`, Traefik `v3.7.15`, metrics-server `v0.9.0` |
+| Imagens de tag fixa | APIs e migration com `:etapa3-v5`, worker com `:etapa3-v5.1`; PostgreSQL `16.14-bookworm`, Traefik `v3.7.15`, metrics-server `v0.9.0` |
 | Ingress como entrada unica e roteamento por caminho | `08-gateway.yaml`, classe `aps-traefik`, controller Traefik e tres prefixos |
 | Probes de liveness e readiness distintas | Nas APIs: `/health/live` verifica o processo; `/health/ready` executa `SELECT 1` no banco a cada chamada |
 | Requests e limits de CPU e memoria | Configurados em todos os containers, incluindo initContainers, Job, banco, gateway e metrics-server |
@@ -17,8 +17,8 @@ Esta etapa acrescenta a orquestracao das imagens da etapa 2. As APIs, os contrat
 | Credenciais em Secret, fora do repositorio | `.env.k8s` e `k8s/02-secret.local.yaml`, ambos ignorados pelo Git; modelo em `scripts/k8s/secret.example.yaml` |
 | Banco persistente em StatefulSet | `03-banco.yaml`, PostgreSQL unico, PVC `dados-banco-0` de 1 GiB e retencao do volume |
 | HPA por CPU e metrics-server respondendo | `09-autoscaling.yaml` e `10-metrics-server-local.yaml`; um HPA por API, de 2 a 10 replicas, alvo de 60% |
-| Cache compartilhado entre replicas | `11-cache.yaml`, Redis `8.2.3-alpine`, usado em `GET /get/sensores`; a fila de mensagens ainda esta pendente |
-| Schema pronto antes das APIs | Job `aps-migrate-etapa3-v2`; initContainers aguardam todas as migrations da imagem estarem aplicadas |
+| Cache e fila de mensagens | `11-cache.yaml`, Redis `8.2.3-alpine`, usado em `GET /get/sensores`; RabbitMQ e worker em `12-fila.yaml` e `13-worker-alertas.yaml` |
+| Schema pronto antes das APIs | Job `aps-migrate-etapa3-v5`; initContainers aguardam todas as migrations da imagem estarem aplicadas |
 
 O namespace da aplicacao e `aps`. O metrics-server usa `kube-system` e registra a API de metricas no cluster. Os manifests desta pasta foram preparados para um cluster local Docker Desktop, com Kubernetes 1.34 ou superior.
 
@@ -64,9 +64,9 @@ O controller de Ingress e o metrics-server estao incluidos na pasta, sem necessi
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/k8s/build-imagens.ps1
 ```
 
-O script usa os tres Dockerfiles existentes e o target `migrate`. Nao publica imagens e nao substitui as tags `1.1.0` usadas pelo Compose. Os Deployments usam `imagePullPolicy: IfNotPresent` para aproveitar as imagens locais.
+O script usa os tres Dockerfiles existentes e os targets `migrate` e `worker`. Nao publica imagens e nao substitui as tags `1.1.0` usadas pelo Compose. Os Deployments usam `imagePullPolicy: IfNotPresent` para aproveitar as imagens locais.
 
-Se um node nao encontrar essas imagens e mostrar `ImagePullBackOff`, confira a tag com `docker image ls` e o provisionador do cluster. Em clusters com nodes que nao compartilham o armazenamento de imagens do Docker Desktop, as quatro imagens devem ser carregadas nos nodes ou publicadas em um registry acessivel, com as referencias dos manifests ajustadas para a mesma tag fixa.
+Se um node nao encontrar essas imagens e mostrar `ImagePullBackOff`, confira a tag com `docker image ls` e o provisionador do cluster. Em clusters com nodes que nao compartilham o armazenamento de imagens do Docker Desktop, as cinco imagens devem ser carregadas nos nodes ou publicadas em um registry acessivel, com as referencias dos manifests ajustadas para a mesma tag fixa.
 
 ## 3. Preparar as credenciais locais
 
@@ -85,6 +85,14 @@ O script cria `k8s/02-secret.local.yaml`. A mesma credencial gera o usuario do P
 
 Esse arquivo nao deve ser enviado aos colegas nem ao GitHub. Cada integrante gera seu Secret a partir da propria `.env.k8s`. O `.env` do Compose continua separado. Depois que o volume do PostgreSQL tiver sido inicializado, mantenha a credencial original: editar apenas o Secret nao troca a senha de um usuario ja existente no banco.
 
+Antes da primeira implantacao da fila, gere tambem seu Secret separado:
+
+```powershell
+node scripts/k8s/gerar-secret-fila.mjs
+```
+
+Ele nao altera o Secret do banco. Veja [fila e alertas](alertas.md).
+
 ## 4. Aplicar tudo com um comando
 
 ```powershell
@@ -95,8 +103,10 @@ Acompanhe a primeira inicializacao:
 
 ```powershell
 kubectl rollout status deployment/cache -n aps --timeout=180s
+kubectl rollout status statefulset/fila -n aps --timeout=300s
+kubectl rollout status deployment/worker-alertas -n aps --timeout=300s
 kubectl rollout status statefulset/banco -n aps --timeout=300s
-kubectl wait -n aps --for=condition=complete job/aps-migrate-etapa3-v2 --timeout=600s
+kubectl wait -n aps --for=condition=complete job/aps-migrate-etapa3-v5 --timeout=600s
 kubectl rollout status deployment/api-alagamento -n aps --timeout=300s
 kubectl rollout status deployment/api-qualidade-ar -n aps --timeout=300s
 kubectl rollout status deployment/api-transito -n aps --timeout=300s
@@ -109,7 +119,7 @@ kubectl get pods,svc,ingress,hpa,pvc -n aps
 O Job aplica as migrations uma unica vez por versao. Os initContainers das APIs consultam `prisma migrate status` e aguardam o schema completo. Se algo falhar, consulte:
 
 ```powershell
-kubectl logs -n aps job/aps-migrate-etapa3-v2
+kubectl logs -n aps job/aps-migrate-etapa3-v5
 kubectl logs -n aps deployment/api-alagamento -c aguardar-migrations
 kubectl describe pods -n aps
 kubectl get events -n aps --sort-by=.metadata.creationTimestamp
@@ -320,3 +330,7 @@ Validacao concluida: build, tipos e 110 testes passaram, incluindo integracao Po
 ## Cache Redis
 
 Consulte [cache de sensores](cache.md) para acompanhar chaves, expiracao, invalidacao e o comportamento quando o Redis esta indisponivel. A readiness das APIs continua verificando o banco a cada chamada: Redis e uma otimizacao opcional, com consulta direta ao banco em caso de falha.
+
+## Fila e alertas
+
+A entrega `etapa3-v5` acrescenta RabbitMQ persistente e um worker com uma replica. A migration cria somente `TarefaAlerta` e `Alerta`, preservando os dados existentes. Consulte [fila e alertas](alertas.md) para arquitetura, GETs, credenciais e demonstracao de recuperacao.
