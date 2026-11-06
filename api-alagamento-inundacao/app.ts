@@ -1,11 +1,25 @@
+import { createAlertasRepository } from '../shared/alertas/alertas.repository.js'
+import { createAlertasService } from '../shared/alertas/alertas.service.js'
+import { createAlertasController } from '../shared/alertas/alertas.controller.js'
+import { semCache, type Cache } from '../shared/cache.js'
 import express, { type Express } from 'express'
-import type { Prisma, PrismaClient } from '@prisma/client'
+import type { PrismaClient } from '@prisma/client'
 import type { ApiRequest, ApiResponse, LiveResponse, ReadyResponse } from '../shared/http.js'
-import { serializeReading } from '../shared/serialization.js'
-import { parseSensorTimestamp } from '../shared/validation.js'
-import { isAlagamentoBody, type AlagamentoResponse } from './contracts.js'
+import { createSensoresController } from './controllers/sensores.controller.js'
+import { createLeiturasController } from './controllers/leituras.controller.js'
+import { createSensoresService } from './services/sensores.service.js'
+import { createLeiturasService } from './services/leituras.service.js'
+import { createSensoresRepository } from './repositories/sensores.repository.js'
+import { createLeiturasRepository } from './repositories/leituras.repository.js'
 
-export function createApp(prisma: PrismaClient): Express {
+export function createApp(prisma: PrismaClient, cache: Cache = semCache): Express {
+  const sensoresRepository = createSensoresRepository(prisma, cache)
+  const leiturasRepository = createLeiturasRepository(prisma)
+  const sensoresService = createSensoresService(sensoresRepository)
+  const leiturasService = createLeiturasService(leiturasRepository, sensoresRepository)
+  const sensoresController = createSensoresController(sensoresService)
+  const leiturasController = createLeiturasController(leiturasService)
+
   const app = express()
   app.use(express.json())
 
@@ -15,7 +29,7 @@ export function createApp(prisma: PrismaClient): Express {
 
   app.get('/health/ready', async (_req: ApiRequest<ReadyResponse>, res: ApiResponse<ReadyResponse>): Promise<void> => {
     try {
-      await prisma.$queryRaw`SELECT 1`
+      await leiturasService.verificarConexao()
       res.status(200).json({ status: 'ready' })
     } catch (error) {
       console.error(error)
@@ -23,39 +37,13 @@ export function createApp(prisma: PrismaClient): Express {
     }
   })
 
-  app.get('/get/alagamento', async (_req: ApiRequest<AlagamentoResponse[]>, res: ApiResponse<AlagamentoResponse[]>): Promise<void> => {
-    try {
-      const leituras = await prisma.alagamento.findMany()
-      res.json(leituras.map(serializeReading))
-    } catch (error) {
-      console.error(error)
-      res.status(500).json({ error: 'erro ao consultar as leituras' })
-    }
-  })
-
-  app.post('/send/alagamento', async (req: ApiRequest<AlagamentoResponse>, res: ApiResponse<AlagamentoResponse>): Promise<void> => {
-    const body: unknown = req.body
-    if (!isAlagamentoBody(body)) {
-      res.status(400).json({ error: 'sensor, timestamp, nivelCorregoCm e chuvaAcumuladaMm sao obrigatorios e devem ter os tipos corretos' })
-      return
-    }
-
-    const sensorTimestamp = parseSensorTimestamp(body.timestamp)
-    if (!sensorTimestamp) {
-      res.status(400).json({ error: 'timestamp deve ser uma data ISO 8601 valida com fuso horario' })
-      return
-    }
-
-    const { sensor, nivelCorregoCm, chuvaAcumuladaMm } = body
-    const data: Prisma.AlagamentoCreateInput = { sensor, timestamp: sensorTimestamp, nivelCorregoCm, chuvaAcumuladaMm }
-    try {
-      const leitura = await prisma.alagamento.create({ data })
-      res.status(201).json(serializeReading(leitura))
-    } catch (error) {
-      console.error(error)
-      res.status(500).json({ error: 'erro ao salvar a leitura' })
-    }
-  })
+  const alertasService = createAlertasService(createAlertasRepository(prisma))
+  const alertasController = createAlertasController(alertasService, 'ALAGAMENTO')
+  app.get('/get/alertas', alertasController.listar)
+  app.get('/get/sensores', sensoresController.listar)
+  app.post('/send/sensor', sensoresController.cadastrar)
+  app.get('/get/alagamento', leiturasController.listar)
+  app.post('/send/alagamento', leiturasController.registrar)
 
   return app
 }

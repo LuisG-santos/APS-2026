@@ -7,25 +7,61 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum TipoSensorAlagamento {
+  NIVEL_CORREGO
+  PLUVIOMETRO
+  NIVEL_VIA
+}
+
+model SensorAlagamento {
+  id        Int                  @id @default(autoincrement())
+  nome      String               @unique
+  tipo      TipoSensorAlagamento
+  leituras  Alagamento[]
+  createdAt DateTime             @default(now())
+}
+
 model Alagamento {
-  id               Int      @id @default(autoincrement())
-  sensor           String
+  id               Int              @id @default(autoincrement())
+  sensorId         Int
+  sensor           SensorAlagamento @relation(fields: [sensorId], references: [id], onDelete: Restrict)
   timestamp        DateTime
-  nivelCorregoCm   Float
-  chuvaAcumuladaMm Float
-  createdAt        DateTime @default(now())
+  nivelCorregoCm   Float?
+  chuvaAcumuladaMm Float?
+  nivelAguaViaCm   Float?
+  createdAt        DateTime         @default(now())
+
+  @@index([sensorId, timestamp])
+}
+
+enum TipoSensorQualidadeAr {
+  MP25
+  CO
+  NO2
+  TEMPERATURA
+}
+
+model SensorQualidadeAr {
+  id        Int                   @id @default(autoincrement())
+  nome      String                @unique
+  tipo      TipoSensorQualidadeAr
+  estacao   String
+  leituras  QualidadeAr[]
+  createdAt DateTime              @default(now())
 }
 
 model QualidadeAr {
-  id          Int      @id @default(autoincrement())
-  sensor      String
-  estacao     String
+  id          Int               @id @default(autoincrement())
+  sensorId    Int
+  sensor      SensorQualidadeAr @relation(fields: [sensorId], references: [id], onDelete: Restrict)
   timestamp   DateTime
-  mp25        Float
-  co          Float
-  no3         Float
-  temperatura Float
-  createdAt   DateTime @default(now())
+  mp25        Float?
+  co          Float?
+  no2         Float?
+  temperatura Float?
+  createdAt   DateTime          @default(now())
+
+  @@index([sensorId, timestamp])
 }
 
 enum TipoSensorTransito {
@@ -35,11 +71,11 @@ enum TipoSensorTransito {
 }
 
 model SensorTransito {
-  id        Int               @id @default(autoincrement())
-  nome      String            @unique
+  id        Int                @id @default(autoincrement())
+  nome      String             @unique
   tipo      TipoSensorTransito
   leituras  Transito[]
-  createdAt DateTime          @default(now())
+  createdAt DateTime           @default(now())
 }
 
 model Transito {
@@ -53,4 +89,37 @@ model Transito {
   createdAt  DateTime       @default(now())
 
   @@index([sensorId, timestamp])
+}
+
+enum DominioAlerta {
+  ALAGAMENTO
+  QUALIDADE_AR
+  TRANSITO
+}
+
+// Trabalho gravado junto com a leitura e removido somente apos confirmacao da fila.
+model TarefaAlerta {
+  id        Int           @id @default(autoincrement())
+  dominio   DominioAlerta
+  leituraId Int
+  sensorId  Int
+  valor     Float
+  timestamp DateTime
+  createdAt DateTime      @default(now())
+
+  @@unique([dominio, leituraId])
+}
+
+model Alerta {
+  id        Int           @id @default(autoincrement())
+  dominio   DominioAlerta
+  leituraId Int
+  sensorId  Int
+  valor     Float
+  limite    Float
+  timestamp DateTime
+  createdAt DateTime      @default(now())
+
+  @@unique([dominio, leituraId])
+  @@index([dominio, sensorId, timestamp])
 }

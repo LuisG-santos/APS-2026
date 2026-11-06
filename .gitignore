@@ -4,6 +4,9 @@ generated/
 .env
 .env.*
 !.env.example
+!.env.k8s.example
+/k8s/*.local.yaml
+/evidencias/*.local.json
 *.log
 *.tsbuildinfo
 __pycache__/

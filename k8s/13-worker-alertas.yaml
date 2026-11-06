@@ -1,0 +1,113 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker-alertas
+  namespace: aps
+spec:
+  selector:
+    app: worker-alertas
+  ports:
+  - name: health
+    port: 3004
+    targetPort: health
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-alertas
+  namespace: aps
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: worker-alertas
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: worker-alertas
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      initContainers:
+      - name: aguardar-migrations
+        image: aps-migrate:etapa3-v5
+        imagePullPolicy: IfNotPresent
+        command: [sh, -ec]
+        args: ['until node node_modules/prisma/build/index.js migrate status; do echo "Aguardando banco e migrations..."; sleep 5; done']
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: aps-db
+              key: DATABASE_URL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop: [ALL]
+      containers:
+      - name: worker
+        image: aps-worker:etapa3-v5.1
+        imagePullPolicy: IfNotPresent
+        envFrom:
+        - configMapRef:
+            name: aps-config
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: aps-db
+              key: DATABASE_URL
+        - name: RABBITMQ_URL
+          valueFrom:
+            secretKeyRef:
+              name: aps-fila
+              key: RABBITMQ_URL
+        ports:
+        - name: health
+          containerPort: 3004
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop: [ALL]
+        startupProbe:
+          httpGet:
+            path: /health/live
+            port: health
+          periodSeconds: 2
+          failureThreshold: 30
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: health
+          periodSeconds: 10
+          timeoutSeconds: 2
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: health
+          periodSeconds: 10
+          timeoutSeconds: 10

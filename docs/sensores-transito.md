@@ -1,5 +1,7 @@
 # Sensores de transito
 
+O cadastro de equipamentos tambem esta disponivel em alagamento e qualidade do ar. Consulte o [guia das tres APIs](sensores.md) para os tipos e exemplos desses dominios.
+
 Cada equipamento tem um cadastro com `id`, `nome` unico e `tipo`. O tipo determina qual medida ele pode enviar:
 
 Os contratos TypeScript estao em `api-transito-e-transporte/contracts.ts`. Eles exigem um `sensorId` numerico, timestamp em texto e somente uma medida. O JSON recebido pela rede e validado antes do uso; a tipagem nao substitui essa validacao.
@@ -105,3 +107,11 @@ python api-transito-e-transporte/req.py
 ```
 
 O simulador reutiliza os nomes ja cadastrados e envia tres requisicoes de leitura independentes. Se algum desses nomes estiver cadastrado com um tipo diferente, informa o conflito.
+
+## Organizacao em camadas
+
+A API segue **rota → controller → service → repository → banco**, com arquivos separados para sensores e leituras em `controllers/`, `services/` e `repositories/`.
+
+O controller valida o formato do JSON e monta as respostas HTTP; o service normaliza o nome do equipamento, valida o timestamp e verifica se a medida e compativel com o sensor cadastrado; o repository executa as consultas Prisma. `errors.ts` define codigos e mensagens de erros conhecidos, que os controllers convertem para 400, 404 ou 409. `app.ts` conecta as camadas, registra as rotas e mantem os handlers pequenos de health. `createApp(prisma)` e a inicializacao por `index.ts` continuam iguais.
+
+`npm run test:transito` executa build, verificacao de tipos e testes dos contratos, services e controllers sem precisar de banco. A integracao HTTP com PostgreSQL continua em `npm test`, exigindo `TEST_DATABASE_URL` com migrations aplicadas. A descricao das responsabilidades comuns esta no [guia das tres APIs](sensores.md#organizacao-das-tres-apis).

@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fila
+  namespace: aps
+spec:
+  clusterIP: None
+  selector:
+    app: fila
+  ports:
+  - name: amqp
+    port: 5672
+    targetPort: amqp
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: fila
+  namespace: aps
+spec:
+  serviceName: fila
+  replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app: fila
+  template:
+    metadata:
+      labels:
+        app: fila
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        fsGroup: 101
+      containers:
+      - name: rabbitmq
+        image: rabbitmq:4.3.0-alpine
+        ports:
+        - name: amqp
+          containerPort: 5672
+        envFrom:
+        - secretRef:
+            name: aps-fila
+        env:
+        - name: RABBITMQ_NODENAME
+          value: rabbit@fila-0
+        - name: RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS
+          value: '-rabbit vm_memory_high_watermark {absolute,268435456} disk_free_limit 104857600'
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+        startupProbe:
+          tcpSocket:
+            port: amqp
+          periodSeconds: 5
+          failureThreshold: 36
+        livenessProbe:
+          exec:
+            command: [rabbitmq-diagnostics, -q, ping]
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          exec:
+            command: [sh, -ec, 'rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms']
+          periodSeconds: 15
+          timeoutSeconds: 10
+        volumeMounts:
+        - name: dados
+          mountPath: /var/lib/rabbitmq
+  volumeClaimTemplates:
+  - metadata:
+      name: dados
+    spec:
+      accessModes: [ReadWriteOnce]
+      resources:
+        requests:
+          storage: 1Gi

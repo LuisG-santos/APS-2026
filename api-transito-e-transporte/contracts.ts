@@ -56,14 +56,3 @@ export function isTransitoBody(value: unknown): value is TransitoBody {
     (isFiniteNumber(ocupacao) && posicao === undefined && velocidade === undefined)
   )
 }
-
-export function medidaParaSensor(body: TransitoBody, tipo: TipoSensorTransito): MedidaTransito | null {
-  switch (tipo) {
-    case TipoSensorTransito.RADAR:
-      return isFiniteNumber(body.velocidade) ? { velocidade: body.velocidade } : null
-    case TipoSensorTransito.GPS:
-      return isNonEmptyString(body.posicao) ? { posicao: body.posicao } : null
-    case TipoSensorTransito.OCUPACAO:
-      return isFiniteNumber(body.ocupacao) ? { ocupacao: body.ocupacao } : null
-  }
-}
