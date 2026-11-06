@@ -1,210 +1,410 @@
-# APS 2026 - Monitoramento Urbano
+# APS 2026 — Monitoramento Urbano
 
-Tres APIs em Node.js, Express, TypeScript e Prisma conectadas ao mesmo banco PostgreSQL 16.
+Projeto acadêmico de Sistemas Distribuídos para receber medições de sensores urbanos, armazenar leituras e gerar alertas assíncronos. O foco da etapa atual é executar a aplicação em **Kubernetes**, demonstrando comunicação, balanceamento, recuperação, persistência e escalonamento.
 
-| API | Porta padrao | Consulta | Envio |
-|---|---:|---|---|
-| Alagamento e inundacao | 3001 | `/get/alagamento` | `/send/alagamento` |
-| Qualidade do ar | 3002 | `/get/qualidade-ar` | `/send/qualidade-ar` |
-| Transito e transporte | 3003 | `/get/transito` | `/send/transito` |
+São **três APIs independentes**, com **dez tipos de sensor**, conectadas ao mesmo **PostgreSQL** pelo **Prisma ORM**. Redis fornece cache compartilhado; RabbitMQ e um worker separado processam alertas.
 
-As tres APIs oferecem `POST /send/sensor` para cadastrar equipamentos com nome e tipo, e `GET /get/sensores` para listar os sensores cadastrados. Cada leitura recebe o `sensorId` do equipamento e uma unica medida compativel com seu tipo.
+## Documentação para o grupo
 
-## Etapa 3 - Kubernetes
+| Guia | Conteúdo |
+|---|---|
+| [API](docs/project/api.md) | Funcionamento, camadas, sensores, banco, rotas, cache e alertas. |
+| [Docker](docs/project/docker.md) | Dockerfiles, estágios de build, imagens e Compose. |
+| [Kubernetes](docs/project/kubernetes.md) | Componentes, configurações, implantação e roteiro de apresentação. |
 
-A pasta `k8s/` acrescenta a implantacao no Docker Desktop: um Deployment e um Service por API, Ingress com Traefik, banco unico em StatefulSet com volume persistente, ConfigMap, Secrets locais, Job de migrations e HPA por CPU nas tres APIs, com metrics-server, cache Redis compartilhado, RabbitMQ persistente e worker de alertas. Os contratos de cadastro e ingestao das APIs continuam os mesmos.
+Roteiros técnicos: [Kubernetes](docs/kubernetes.md), [sensores](docs/sensores.md), [cache](docs/cache.md) e [fila e alertas](docs/alertas.md).
 
-Depois de habilitar o cluster, construir as imagens, gerar o Secret do banco e executar `node scripts/k8s/gerar-secret-fila.mjs`, aplique tudo com `kubectl apply -f k8s/`. O [guia da etapa 3](docs/kubernetes.md) explica a preparacao, o acesso e os testes para a demonstracao.
+## O que está implementado
 
-Os [resultados dos testes executados](docs/resultados-testes.md) registram a validacao das APIs, persistencia, probes, RollingUpdate, HPA e balanceamento no Docker Desktop.
+- Cadastro de sensores com nome único, tipo e ID; qualidade do ar também registra a estação.
+- Recebimento de uma medida por leitura, com validação do JSON, do sensor e do timestamp.
+- Consulta de sensores, leituras com sensor associado e alertas de cada domínio.
+- Arquitetura controller → service → repository, com contratos TypeScript e validação em execução.
+- Cache Redis de sensores, compartilhado entre réplicas, com expiração e invalidação.
+- Leitura e trabalho de alerta gravados na mesma transação; processamento posterior por RabbitMQ e worker.
+- Confirmações de envio e processamento, novas tentativas e proteção contra alertas duplicados.
+- Dockerfiles em múltiplos estágios e Compose para desenvolvimento.
+- Kubernetes com Ingress, Services, réplicas, probes, recursos, volumes, migrations, Secrets e HPA.
+- Simuladores Python, testes de contratos, camadas, migrations e integrações reais.
 
-## Executar com Docker
+## Arquitetura
 
-Na raiz do projeto:
+```mermaid
+flowchart LR
+    Cliente[Postman ou sensores simulados] --> Gateway[Ingress / Traefik]
+    Gateway --> APIs[Três APIs Express]
+    APIs -->|Sensores, leituras e tarefas| Banco[PostgreSQL / Prisma]
+    APIs -->|Cache de sensores| Redis
+    Worker -->|Consulta tarefas e salva alertas| Banco
+    Worker -->|Publicação confirmada| RabbitMQ
+    RabbitMQ -->|Consumo com ACK| Worker
+```
+
+As APIs usam **Node.js 22, Express 5 e TypeScript**, com **Prisma 6 e PostgreSQL 16**. Cada API roda em seu próprio processo e possui suas tabelas de sensores e leituras. Elas compartilham o banco e os módulos de infraestrutura em `shared/`.
+
+### Organização do código
+
+As três pastas de API seguem a mesma divisão em camadas:
+
+```text
+api-alagamento-inundacao/
+api-qualidade-do-ar/
+api-transito-e-transporte/
+  controllers/             # JSON, respostas e status HTTP
+  services/                # Normalização e regras de negócio
+  repositories/            # Consultas e gravações
+  contracts.ts             # Tipos e validação estrutural
+  errors.ts                # Erros conhecidos da API
+  app.ts                   # Conexão das camadas e rotas
+  index.ts                 # Inicialização e encerramento
+shared/
+  alertas/                 # Regras, persistência, AMQP e worker
+  cache.ts                 # Redis e cache de sensores
+  http.ts                  # Tipos HTTP compartilhados
+  serialization.ts         # Datas dos modelos para JSON
+  validation.ts            # Validações compartilhadas
+prisma/
+  schema.prisma
+  migrations/
+k8s/                       # Manifests da aplicação completa
+scripts/k8s/               # Build, geração de Secrets e verificação
+tests/                     # Contratos, camadas e integrações
+docs/                      # Guias e evidências
+```
+
+O fluxo é **rota → controller → service → repository → banco**. Os services recebem repositories por parâmetro, sem depender de Express nem executar consultas Prisma. O JSON chega como `unknown` e é validado antes do uso; datas são serializadas explicitamente nas respostas.
+
+## APIs e rotas
+
+| API | Porta padrão no Compose/local | Base pelo Ingress |
+|---|---:|---|
+| Alagamento e inundação | 3001 | `http://localhost:30080/alagamento` |
+| Qualidade do ar | 3002 | `http://localhost:30080/qualidade-ar` |
+| Trânsito e transporte | 3003 | `http://localhost:30080/transito` |
+
+Todas oferecem estas rotas internas:
+
+| Método | Rota | Finalidade |
+|---|---|---|
+| POST | `/send/sensor` | Cadastrar um equipamento. |
+| GET | `/get/sensores` | Listar os equipamentos cadastrados. |
+| GET | `/get/alertas` | Consultar alertas somente do domínio da API. |
+| GET | `/health/live` | Verificar se o processo responde. |
+| GET | `/health/ready` | Verificar a conexão com o banco a cada chamada. |
+
+As rotas de leituras são:
+
+| API | POST | GET |
+|---|---|---|
+| Alagamento | `/send/alagamento` | `/get/alagamento` |
+| Qualidade do ar | `/send/qualidade-ar` | `/get/qualidade-ar` |
+| Trânsito | `/send/transito` | `/get/transito` |
+
+No Compose, consulte `http://localhost:3001/get/alagamento`. No Kubernetes, use `http://localhost:30080/alagamento/get/alagamento`: Traefik seleciona a API e remove o primeiro prefixo.
+
+GETs não precisam de body. Os GETs atuais retornam listas; filtros, agregações e paginação não fazem parte dos endpoints implementados.
+
+### Sensores, medidas e unidades
+
+Primeiro cadastre o equipamento e use seu `sensorId` nas leituras. Os IDs são independentes entre domínios. O cadastro de qualidade do ar exige `estacao`; esse texto fica no sensor, sem ser repetido na leitura.
+
+| API | Tipo | Campo da medida | Unidade ou formato |
+|---|---|---|---|
+| Alagamento | `NIVEL_CORREGO` | `nivelCorregoCm` | cm relativos à referência fixa do ponto |
+| Alagamento | `PLUVIOMETRO` | `chuvaAcumuladaMm` | mm nos últimos 60 minutos |
+| Alagamento | `NIVEL_VIA` | `nivelAguaViaCm` | cm relativos à referência fixa do ponto |
+| Qualidade do ar | `MP25` | `mp25` | PM2.5 em µg/m³ |
+| Qualidade do ar | `CO` | `co` | ppm |
+| Qualidade do ar | `NO2` | `no2` | µg/m³ |
+| Qualidade do ar | `TEMPERATURA` | `temperatura` | °C |
+| Trânsito | `RADAR` | `velocidade` | valor numérico de velocidade |
+| Trânsito | `GPS` | `posicao` | texto, como `-23.55,-46.63` |
+| Trânsito | `OCUPACAO` | `ocupacao` | proporção: `0.80` representa 80% |
+
+Cada POST de leitura recebe **uma única medida**, compatível com o tipo do sensor. As respostas incluem o objeto `sensor`; medidas não utilizadas ficam `null`. Há também uma restrição SQL exigindo exatamente uma medida por registro, índice por sensor/timestamp e proteção contra excluir sensores com leituras.
+
+`timestamp` é obrigatório, informado pelo sensor em ISO 8601 com fuso. O instante é preservado; `createdAt` registra a gravação no banco. Datas inválidas ou sem fuso retornam 400. Janelas sobrepostas de chuva acumulada não devem ser somadas.
+
+### Exemplo no Postman
+
+Configure **Body → raw → JSON** no POST de cadastro:
+
+```http
+POST http://localhost:30080/alagamento/send/sensor
+```
+
+```json
+{
+  "nome": "corrego-apresentacao",
+  "tipo": "NIVEL_CORREGO"
+}
+```
+
+Use o ID retornado para enviar a leitura (`1` abaixo é apenas exemplo):
+
+```http
+POST http://localhost:30080/alagamento/send/alagamento
+```
+
+```json
+{
+  "sensorId": 1,
+  "timestamp": "2026-11-06T12:00:00.000Z",
+  "nivelCorregoCm": 180
+}
+```
+
+Consulte `/alagamento/get/alagamento` e, após o processamento, `/alagamento/get/alertas`. Para qualidade do ar, um cadastro válido é `{"nome":"sensor-mp25","tipo":"MP25","estacao":"estacao-01"}`. O campo correto é `no2`; `no3` e `estacao` são rejeitados no corpo de leituras dessa API.
+
+Status principais: **201** criação, **400** entrada inválida, **404** sensor inexistente, **409** nome duplicado, **500** falha inesperada e **503** readiness indisponível. Mais exemplos no [guia de sensores](docs/sensores.md).
+
+## Cache Redis
+
+`GET /get/sensores` usa uma chave por domínio, compartilhada entre réplicas e válida por **15 segundos**. Quando a chave não existe, o repository consulta PostgreSQL e preenche o cache. Cadastrar um sensor invalida a lista correspondente.
+
+Redis é opcional: se estiver indisponível, a API consulta o banco. A expiração limita a desatualização em falhas de invalidação ou consultas concorrentes. Histórico de leituras e validação de sensor durante a ingestão continuam acessando PostgreSQL.
+
+No Kubernetes, Redis possui uma réplica, sem persistência, com limite de dados de 64 MB e política `allkeys-lru`. O armazenamento pode ser reconstruído. Veja [cache e demonstração](docs/cache.md).
+
+## Fila e alertas assíncronos
+
+| Tipo com regra | Condição | Variável e padrão do worker |
+|---|---|---|
+| `NIVEL_CORREGO` | Nível maior que 150 cm | `ALERTA_NIVEL_CORREGO_CM=150` |
+| `MP25` | PM2.5 maior que 35 µg/m³ | `ALERTA_MP25=35` |
+| `OCUPACAO` | Ocupação maior que 0,80 | `ALERTA_OCUPACAO=0.80` |
+
+São limites ilustrativos de demonstração. Igualdade não gera alerta; os demais tipos apenas armazenam leituras. O worker valida limites finitos e não negativos, com ocupação entre 0 e 1.
+
+1. A API salva leitura e `TarefaAlerta` na mesma transação para esses três tipos e responde 201.
+2. O worker consulta os trabalhos pendentes, publica no RabbitMQ e os remove do banco após confirmação do envio.
+3. O mesmo worker consome as mensagens, aplica a regra e salva eventuais alertas.
+4. Confirma o processamento com ACK. Em falha, há nova tentativa; a unicidade de `(dominio, leituraId)` impede alertas duplicados.
+
+A fila principal é `aps.alertas.v1`; mensagens inválidas vão para `aps.alertas.invalidos.v1`. Usamos filas duráveis, mensagens persistentes, confirmação do publicador e consumo com `prefetch=1`.
+
+Mantenha **uma réplica do worker** nesta versão. Ele publica lotes de até 100 trabalhos e aguarda um segundo quando não há tarefas ou após falhas. Se worker ou RabbitMQ pararem, as APIs continuam salvando leituras e trabalhos no banco. Não há geração retroativa para leituras anteriores à implantação dos alertas.
+
+`GET /get/alertas` retorna `id`, `dominio`, `leituraId`, `sensorId`, `valor`, `limite`, `timestamp` e `createdAt`. O resultado é ordenado por timestamp e ID decrescentes, com `[]` quando não há alertas. Detalhes em [fila e alertas](docs/alertas.md).
+
+## Executar a aplicação completa em Kubernetes
+
+O ambiente de referência é **Docker Desktop com Linux containers, Kubernetes e provisionador kubeadm, com um nó**. Os recursos da aplicação ficam no namespace `aps`; metrics-server fica em `kube-system`. Para preparação local, use Docker Desktop, `kubectl`, Node.js 22 e PowerShell para os scripts existentes.
+
+### Primeira preparação
+
+Na raiz do repositório, em PowerShell:
 
 ```powershell
-Copy-Item .env.example .env
-# Edite POSTGRES_PASSWORD e os demais valores se necessario.
+kubectl config use-context docker-desktop
+kubectl get nodes
+Copy-Item .env.k8s.example .env.k8s
+```
+
+Defina uma senha própria em `.env.k8s` e gere os Secrets. Se os arquivos locais já existem, reutilize-os e pule sua criação:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/k8s/gerar-secret.ps1
+node scripts/k8s/gerar-secret-fila.mjs
+```
+
+O primeiro script gera `k8s/02-secret.local.yaml` para PostgreSQL; o segundo gera `k8s/02-fila-secret.local.yaml` com senha aleatória para RabbitMQ. Os arquivos reais de ambiente e Secrets locais são ignorados pelo Git. Preserve credenciais de volumes já inicializados: mudar somente o Secret não altera a senha existente no banco ou broker.
+
+No macOS/Linux com PowerShell instalado, use `pwsh` no lugar de `powershell`. O [guia Docker](docs/project/docker.md) também mostra o build direto pela CLI.
+
+### Build e implantação
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/k8s/build-imagens.ps1
+kubectl apply -f k8s/
+kubectl wait -n aps --for=condition=complete job/aps-migrate-etapa3-v5 --timeout=600s
+kubectl rollout status deployment/api-alagamento -n aps --timeout=300s
+kubectl rollout status deployment/api-qualidade-ar -n aps --timeout=300s
+kubectl rollout status deployment/api-transito -n aps --timeout=300s
+kubectl rollout status statefulset/fila -n aps --timeout=300s
+kubectl rollout status deployment/worker-alertas -n aps --timeout=300s
+kubectl get pods,svc,ingress,hpa,pvc -n aps
+```
+
+O script constrói cinco imagens do projeto. Elas precisam estar disponíveis aos nós; o ambiente de referência usa imagens locais. Outros provisionadores ou clusters podem exigir carregamento das imagens nos nós ou publicação em registry.
+
+| Componente | Imagem | Organização |
+|---|---|---|
+| Alagamento | `aps-alagamento:etapa3-v5` | Deployment + Service; 2–10 réplicas |
+| Qualidade do ar | `aps-qualidade-ar:etapa3-v5` | Deployment + Service; 2–10 réplicas |
+| Trânsito | `aps-transito:etapa3-v5` | Deployment + Service; 2–10 réplicas |
+| Migrations | `aps-migrate:etapa3-v5` | Job e initContainers de verificação |
+| Worker | `aps-worker:etapa3-v5.1` | Deployment + Service de health; uma réplica |
+| PostgreSQL | `postgres:16.14-bookworm` | StatefulSet + Service + PVC de 1 GiB |
+| Redis | `redis:8.2.3-alpine` | Deployment + Service; uma réplica |
+| RabbitMQ | `rabbitmq:4.3.0-alpine` | StatefulSet + Service + PVC de 1 GiB |
+| Gateway | `traefik:v3.7.15` | Deployment + Service NodePort + Ingress |
+| Métricas | `registry.k8s.io/metrics-server/metrics-server:v0.9.0` | Métricas para HPA e `kubectl top` |
+
+### Comunicação e disponibilidade
+
+- **Ingress:** entrada única por caminho, com Traefik removendo o prefixo externo e distribuindo tráfego entre endpoints prontos.
+- **Services:** nomes internos estáveis, como `banco`, `cache` e `fila`.
+- **ConfigMap:** portas, Redis e limites de alerta. Secrets fornecem credenciais; somente broker e worker recebem o Secret da fila.
+- **Migrations:** o Job aplica mudanças; initContainers das APIs e do worker aguardam sua conclusão antes de iniciar os processos.
+- **Probes:** startup acompanha a inicialização; liveness verifica o processo; readiness das APIs consulta o banco a cada chamada. No worker, readiness verifica banco e RabbitMQ.
+- **Recursos:** requests e limits de CPU/memória em todos os containers, incluindo initContainers e Job.
+- **RollingUpdate:** APIs usam `maxUnavailable: 0`, `maxSurge: 1`, `minReadySeconds: 5` e espera de cinco segundos no `preStop`.
+- **HPA:** cada API varia entre 2 e 10 réplicas, com alvo médio de 60% do request de CPU. As APIs pedem `100m` de CPU: o alvo corresponde a aproximadamente `60m` por pod. O crescimento permite uma réplica por 30 segundos; a redução tem estabilização de 120 segundos e retira uma por 60 segundos.
+- **Persistência:** PostgreSQL e RabbitMQ têm volumes retidos; Redis guarda apenas cache reconstruível. Os volumes do Kubernetes são separados do Compose.
+
+Os Deployments das APIs deixam a quantidade de réplicas sob controle do HPA. A implantação local com um único nó, banco e broker únicos não oferece tolerância à perda da máquina inteira.
+
+### Acesso e acompanhamento
+
+No Docker Desktop da demonstração, use `http://localhost:30080` com os prefixos das APIs. Alternativamente:
+
+```sh
+kubectl port-forward -n aps service/aps-gateway 8080:80
+```
+
+Mantenha o terminal aberto e use `http://localhost:8080/alagamento`, `/qualidade-ar` ou `/transito`. O acesso continua passando pelo Ingress.
+
+```sh
+kubectl top pods -n aps
+kubectl get hpa -n aps
+kubectl logs -n aps deployment/aps-gateway --tail=30
+kubectl logs -n aps deployment/worker-alertas --tail=30
+```
+
+Os logs JSON de Traefik mostram o backend em `ServiceAddr`, permitindo associar requisições aos IPs dos pods. O roteiro completo está em [Kubernetes](docs/kubernetes.md).
+
+## Executar com Docker Compose
+
+O Compose sobe **PostgreSQL, migrations, três APIs e clientes curl de verificação**. Redis, RabbitMQ e worker estão na configuração Kubernetes; não são iniciados pelo Compose atual. Nesse modo, os GETs funcionam sem cache e tarefas de alerta aguardam um worker configurado.
+
+Na primeira configuração, copie `.env.example` para `.env` e ajuste a senha. No PowerShell, use `Copy-Item .env.example .env`; no macOS/Linux, `cp .env.example .env`. Reutilize configurações existentes.
+
+```sh
 docker compose up --build -d
 docker compose ps -a
-```
-
-O Compose inicia um banco `aps`, um servico `migrate`, as tres APIs e tres clientes de verificacao. Todas as APIs recebem a mesma `DATABASE_URL`, usando o endereco interno `db:5432`. Elas iniciam somente depois que as migrations forem concluidas.
-
-O schema e todo o historico de migrations ficam em `prisma/`. O volume `aps-db-data` guarda as tabelas de leituras `Alagamento`, `QualidadeAr` e `Transito`, e os cadastros `SensorAlagamento`, `SensorQualidadeAr` e `SensorTransito`. Os Dockerfiles usam a raiz como contexto de build, executam em multiplos estagios e usam o usuario `node` no runtime.
-
-As portas publicadas podem ser alteradas no `.env`: `DB_PORT`, `ALAGAMENTO_API_PORT`, `QUALIDADE_AR_API_PORT` e `TRANSITO_API_PORT`.
-
-```powershell
 docker compose logs migrate client-alagamento client-qualidade-ar client-transito
-Invoke-RestMethod http://localhost:3001/health/ready
-Invoke-RestMethod http://localhost:3002/health/ready
-Invoke-RestMethod http://localhost:3003/health/ready
 ```
 
-Cada API possui `/health/live` para verificar o processo e `/health/ready` para verificar a conexao com o banco.
+O banco precisa estar saudável para executar migrations; as APIs aguardam sua conclusão. Clientes encerrados com código zero indicam que as verificações terminaram com sucesso.
 
-## Cache de sensores
+A conexão interna usa `db:5432`. No computador, o padrão é PostgreSQL em `localhost:5433` e APIs em 3001, 3002 e 3003. Essas portas podem ser alteradas pelas variáveis do `.env.example`.
 
-No Kubernetes, `GET /get/sensores` usa Redis compartilhado pelas replicas de cada API. O resultado expira em 15 segundos e o cadastro de um sensor invalida a lista do seu dominio. As consultas de leituras continuam acessando o banco. Se o Redis falhar, a API consulta o PostgreSQL. Os endpoints e o formato do JSON foram preservados.
+Os Dockerfiles usam Node.js 22, build em múltiplos estágios, `npm ci`, geração do Prisma Client, compilação para `dist/`, remoção de dependências de desenvolvimento e usuário `node` no runtime. O contexto de build é a raiz do projeto. As tags do Compose são `1.1.0`, separadas das tags de implantação Kubernetes.
 
-Fora do Kubernetes, o cache e opcional: deixe `REDIS_URL` vazio para executar sem Redis. O Compose permanece sem cache nesta etapa. Veja a [explicacao e a demonstracao do cache](docs/cache.md). RabbitMQ e um worker separado processam alertas simples; veja o [fluxo e as novas consultas](docs/alertas.md).
+`docker compose down` preserva o volume `aps-db-data`; removê-lo também apaga os dados desse ambiente. Consulte o [guia Docker](docs/project/docker.md).
 
-## Alertas assincronos
+## Desenvolvimento local e simuladores
 
-As APIs salvam um trabalho junto com cada leitura de NIVEL_CORREGO, MP25 ou OCUPACAO. O worker publica esses trabalhos no RabbitMQ e gera alertas acima dos limites de demonstracao: 150 cm, 35 microgramas/m3 e ocupacao 0,80. Cada API oferece `GET /get/alertas`, sem body, restrito ao seu dominio. Veja [execucao, falhas e exemplos no Postman](docs/alertas.md).
+Para rodar as APIs fora dos containers, configure `DATABASE_URL` no ambiente local. Com o PostgreSQL do Compose:
 
-## Timestamp das leituras
-
-O sensor gera `timestamp` imediatamente antes de enviar a requisicao. Esse valor e obrigatorio no POST, fica salvo no banco e e retornado no GET. Use ISO 8601 com fuso, como `2026-10-09T00:30:00.123Z` ou `2026-10-08T21:30:00.123-03:00`. Horarios sem fuso e datas invalidas retornam HTTP 400.
-
-`createdAt` registra o momento de gravacao no banco e e separado do `timestamp` do sensor.
-
-## Enviar leituras
-
-Os arquivos `req.py` simulam os sensores e geram o timestamp no momento de cada envio:
-
-```powershell
-python api-alagamento-inundacao/req.py
-python api-qualidade-do-ar/req.py
-python api-transito-e-transporte/req.py
-```
-
-Cada simulador cadastra ou reutiliza os equipamentos pelo nome. Alagamento envia tres leituras, qualidade do ar envia quatro e transito envia tres. Cada equipamento envia uma requisicao independente com seu `sensorId`, timestamp e uma unica medida.
-
-Defina `API_URL` para alterar o destino de um simulador, por exemplo `$env:API_URL = "http://localhost:3002"`.
-
-Primeiro cadastre o equipamento com `POST /send/sensor` na porta da API correspondente. Exemplo de alagamento, em `http://localhost:3001/send/sensor`:
-
-```json
-{
-    "nome": "sensor-nivel",
-    "tipo": "NIVEL_CORREGO"
-}
-```
-
-Depois envie a leitura para `POST http://localhost:3001/send/alagamento`, usando o ID retornado no cadastro:
-
-```json
-{
-    "sensorId": 1,
-    "timestamp": "2026-10-09T00:30:00.123Z",
-    "nivelCorregoCm": 120.5
-}
-```
-
-Qualidade do ar: cadastre, por exemplo, `{"nome":"sensor-mp25","tipo":"MP25","estacao":"estacao-01"}` em `POST http://localhost:3002/send/sensor`. A estacao e obrigatoria no cadastro do equipamento. Use seu ID em `POST http://localhost:3002/send/qualidade-ar`, sem repetir a estacao na leitura:
-
-```json
-{
-    "sensorId": 1,
-    "timestamp": "2026-10-09T00:30:00.123Z",
-    "mp25": 35.2
-}
-```
-
-Transito: cadastre `{"nome":"radar","tipo":"RADAR"}` em `POST http://localhost:3003/send/sensor`. Use seu ID em `POST http://localhost:3003/send/transito`:
-
-```json
-{
-    "sensorId": 1,
-    "timestamp": "2026-10-09T00:30:00.123Z",
-    "velocidade": 42.5
-}
-```
-
-| API | Tipo do sensor | Medida aceita | Exemplo de nome |
-|---|---|---|---|
-| Alagamento | `NIVEL_CORREGO` | `nivelCorregoCm` | `sensor-nivel` |
-| Alagamento | `PLUVIOMETRO` | `chuvaAcumuladaMm` | `pluviometro` |
-| Alagamento | `NIVEL_VIA` | `nivelAguaViaCm` | `sensor-nivel-via` |
-| Qualidade do ar | `MP25` | `mp25` | `sensor-mp25` |
-| Qualidade do ar | `CO` | `co` | `sensor-co` |
-| Qualidade do ar | `NO2` | `no2` | `sensor-no2` |
-| Qualidade do ar | `TEMPERATURA` | `temperatura` | `termometro` |
-| Transito | `RADAR` | `velocidade` | `radar` |
-| Transito | `GPS` | `posicao` | `gps` |
-| Transito | `OCUPACAO` | `ocupacao` | `contador` |
-
-Use sempre o ID retornado pela API correspondente: os cadastros sao separados por dominio dentro do mesmo banco. Cada leitura deve conter somente a medida correspondente ao tipo cadastrado. A API rejeita nomes duplicados no mesmo cadastro, sensores inexistentes e medidas misturadas. As respostas das tres APIs incluem o sensor com seu nome e tipo; os campos das outras medidas ficam `null`. O campo `veiculo` continua removido.
-
-Os exemplos completos e os comandos PowerShell estao no [guia de sensores das tres APIs](docs/sensores.md).
-
-## Desenvolvimento e testes
-
-Use Node.js 22 ou superior. Para executar localmente fora dos containers, ajuste `DATABASE_URL` no `.env` e rode:
-
-```powershell
+```sh
 npm ci
-docker compose up -d db
+docker compose up -d --wait db
 npm run db:migrate
 npm run build
 ```
 
-Em tres terminais:
+Inicie em terminais separados:
 
-```powershell
+```sh
 npm run dev:alagamento
 npm run dev:qualidade-ar
 npm run dev:transito
 ```
 
-Os testes usam um banco PostgreSQL separado e exigem `TEST_DATABASE_URL` com migrations aplicadas:
+Com Redis configurado em `REDIS_URL`, o cache é habilitado. Para processar alertas localmente, configure também RabbitMQ em `RABBITMQ_URL` e inicie `npm run dev:worker`. Após build, o comando de produção é `npm run start:worker`. O health do worker usa `WORKER_PORT`, padrão 3004, e fica interno no Kubernetes.
 
-```powershell
-docker compose exec db sh -c 'createdb -U "$POSTGRES_USER" aps_test'
-$env:TEST_DATABASE_URL = "postgresql://postgres:change-me@localhost:5433/aps_test"
-$env:DATABASE_URL = $env:TEST_DATABASE_URL
-npm run db:migrate
+Os simuladores usam apenas a biblioteca padrão do Python 3:
+
+```sh
+python3 api-alagamento-inundacao/req.py
+python3 api-qualidade-do-ar/req.py
+python3 api-transito-e-transporte/req.py
+```
+
+Eles cadastram ou reutilizam sensores, verificam conflitos e enviam uma leitura por tipo: três de alagamento, quatro de qualidade do ar e três de trânsito. Cada envio gera o timestamp atual com fuso UTC. Não são geradores de carga.
+
+Para apontar ao Kubernetes, defina `API_URL` com o prefixo correto. Exemplo em bash/zsh:
+
+```sh
+API_URL=http://localhost:30080/alagamento python3 api-alagamento-inundacao/req.py
+```
+
+No PowerShell, defina `$env:API_URL` antes de executar Python. Para as demais APIs, use `/qualidade-ar` ou `/transito`. O script [carga.mjs](scripts/k8s/carga.mjs) é separado e gera requisições HTTP concorrentes para demonstrações de infraestrutura.
+
+## Configuração de ambiente
+
+| Variável | Uso |
+|---|---|
+| `DATABASE_URL` | Conexão Prisma com o PostgreSQL. |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Preparação do banco/Compose; Kubernetes usa ConfigMap e Secret. |
+| `DB_PORT`, `ALAGAMENTO_API_PORT`, `QUALIDADE_AR_API_PORT`, `TRANSITO_API_PORT` | Portas publicadas pelo Compose. |
+| `PORT` | Porta do processo de cada API; os padrões são 3001, 3002 e 3003. |
+| `REDIS_URL` | Cache opcional das APIs; vazio desabilita. |
+| `RABBITMQ_URL` | Conexão exigida pelo worker. |
+| `WORKER_PORT` | Porta HTTP de health do worker. |
+| `ALERTA_NIVEL_CORREGO_CM`, `ALERTA_MP25`, `ALERTA_OCUPACAO` | Limites usados na inicialização do worker. |
+| `API_URL` | Destino dos simuladores Python. |
+
+Modelos: [.env.example](.env.example) para desenvolvimento/Compose e [.env.k8s.example](.env.k8s.example) para preparar as credenciais do banco no Kubernetes. Os limites do cluster ficam em [01-configmap.yaml](k8s/01-configmap.yaml); alterações nas variáveis exigem reiniciar os processos correspondentes.
+
+## Banco, migrations e compatibilidade
+
+O [schema](prisma/schema.prisma) contém três modelos de sensores, três de leituras e os modelos compartilhados `TarefaAlerta` e `Alerta`. Os nomes de sensores são únicos dentro de seu cadastro. A estação pertence a `SensorQualidadeAr`.
+
+O histórico de [migrations](prisma/migrations) inclui a separação de sensores, os tipos `NIVEL_CORREGO`, `PLUVIOMETRO` e `NIVEL_VIA`, a correção de `NO3/no3` para `NO2/no2`, a estação no cadastro e a criação aditiva de tarefas/alertas. As migrations antigas permanecem versionadas. As restaurações recentes preservam dados existentes; detalhes dos cadastros legados estão no [guia de sensores](docs/sensores.md).
+
+`npm run db:migrate` aplica migrations pendentes com `prisma migrate deploy`. `npm run db:generate` gera o Client; `npm run build` gera o Client e compila TypeScript. Gerar o Client não aplica alterações nas tabelas. Use as migrations antes de iniciar uma versão que depende da nova estrutura.
+
+## Testes e verificações
+
+| Comando | Verificação |
+|---|---|
+| `npm run build` | Geração do Prisma Client e compilação. |
+| `npm run typecheck` | Contratos e casos esperados de erro TypeScript. |
+| `npm run db:validate` | Validação do schema Prisma. |
+| `npm run test:alagamento` | Contratos, services, controllers e migration de alagamento. |
+| `npm run test:qualidade-ar` | Contratos, services, controllers e migration de qualidade do ar. |
+| `npm run test:transito` | Contratos, services e controllers de trânsito. |
+| `npm run test:cache` | Cache, invalidação, isolamento, expiração e transporte Redis. |
+| `npm run test:alertas` | Regras, configuração, mensagens, migration e integração de alertas. |
+| `npm test` | Build, tipos e suíte completa, com arquivos em sequência. |
+
+As suítes específicas podem rodar sem serviços externos, ignorando integrações cujas variáveis não estão definidas. A suíte principal **exige `TEST_DATABASE_URL`**, pois inclui testes HTTP com PostgreSQL real.
+
+| Variável de teste | Requisito |
+|---|---|
+| `TEST_DATABASE_URL` | Banco exclusivo de testes com todas as migrations aplicadas. |
+| `TEST_REDIS_URL` | Instância Redis exclusiva; o teste limpa suas chaves de sensores. |
+| `TEST_RABBITMQ_URL` | Broker exclusivo; a integração de alertas limpa suas filas. Requer também PostgreSQL. |
+
+Para a suíte completa sem testes ignorados, prepare os três serviços e configure as três variáveis. Exemplo em bash/zsh, substituindo usuários, senhas e endereços de teste:
+
+```sh
+export TEST_DATABASE_URL='postgresql://USUARIO:SENHA@localhost:5433/aps_test'
+export TEST_REDIS_URL='redis://localhost:16379'
+export TEST_RABBITMQ_URL='amqp://USUARIO:SENHA@localhost:15673?heartbeat=5'
+DATABASE_URL="$TEST_DATABASE_URL" npm run db:migrate
 npm test
-Remove-Item Env:DATABASE_URL
-Remove-Item Env:TEST_DATABASE_URL
 ```
 
-A suite possui 38 testes de integracao: cadastro e identificacao nas tres APIs, todos os nove tipos de sensor, nomes duplicados, sensores inexistentes, uma medida por sensor, integridade no banco, timestamp do dispositivo, datas invalidas, banco compartilhado e rejeicao de corpos JSON com tipos incorretos.
+No PowerShell, variáveis de ambiente usam `$env:NOME = 'valor'`; aponte `DATABASE_URL` para o banco de testes ao aplicar suas migrations. Use somente instâncias exclusivas para essas integrações.
 
-## Tipagem das APIs
+A cobertura inclui os dez tipos de sensor, normalização, nomes duplicados, sensor inexistente, medidas incompatíveis/misturadas, timestamps, serialização, integridade SQL, rollback de leitura/trabalho, limites de alerta, reentrega, idempotência e isolamento dos domínios.
 
-Cada API define seus contratos de entrada e resposta em `contracts.ts`. As rotas usam `Request` e `Response` parametrizados pelos tipos do projeto, com retorno explicito. O JSON recebido e tratado como `unknown` e validado antes que seus campos sejam usados. Dados enviados ao banco seguem os tipos gerados pelo Prisma.
+### Validações registradas e pendências da apresentação
 
-As medidas de cada API formam uma uniao de tipos mutuamente exclusivos: um corpo contem somente uma medida. Misturar medidas ou informar um ID como texto produz erro de compilacao quando o contrato e usado em TypeScript e HTTP 400 quando um JSON invalido chega pela rede. O tipo do equipamento cadastrado tambem e conferido em tempo de execucao.
+A última execução completa registrada em **05/11/2026 teve 131 testes aprovados, sem falhas nem casos ignorados**, com PostgreSQL, Redis e RabbitMQ exclusivos de testes. Build e tipos também passaram. No cluster, foram conferidos cache, worker parado, interrupção/recuperação do RabbitMQ, reenvio sem alertas duplicados e preservação dos dados existentes. A revisão final do worker repetiu as verificações de mensagens inválidas. Veja [alertas](docs/alertas.md) e [cache](docs/cache.md).
 
-As respostas JSON representam `timestamp` e `createdAt` como strings ISO; os objetos Date usados pelo Prisma sao serializados explicitamente. Nenhuma conversao forcada e usada para transformar o corpo recebido em uma leitura.
+Para fechar as evidências atuais da ficha de Kubernetes, ainda é necessário registrar:
 
-Depois de instalar as dependencias e gerar o Prisma Client, verifique os contratos com:
+- Dez requisições pelo Ingress identificando diferentes pods pelos logs.
+- Tempo de substituição de um pod de API excluído.
+- Persistência ao recriar o pod do PostgreSQL e readiness sem reinícios ao parar o banco.
+- Escala manual para quatro réplicas, coordenada com o HPA.
+- Aumento automático acima das duas réplicas iniciais sob carga.
 
-```powershell
-npm run typecheck
-```
+O script [testar.mjs](scripts/k8s/testar.mjs) cobre verificações de infraestrutura e **interrompe temporariamente o banco**, recria pods e gera carga. Planeje sua execução em ambiente de demonstração/testes e a restauração dos serviços.
 
-`tests/contracts.type-test.ts` verifica exemplos validos e rejeicoes esperadas pelo compilador, incluindo corpo nao validado, tipos incorretos e medidas misturadas. `npm test` executa build, verificacao de tipos e testes HTTP.
-
-## Persistencia e volumes legados
-
-`docker compose restart db` reinicia o banco sem perder leituras. `docker compose down` tambem preserva o volume; somente `docker compose down -v` remove `aps-db-data`.
-
-As tres pilhas anteriores usavam volumes separados. Eles nao sao importados automaticamente para `aps-db-data` e foram preservados como backup durante esta migracao. O novo ambiente inicia com dados de desenvolvimento vazios, conforme decidido para este projeto.
-
-Para quem ja usa o banco unico, a migration `20261016000000_sensores_transito` separa cada registro antigo de transito em tres leituras, mantendo medidas, timestamp e createdAt. O ID original permanece na velocidade; posicao e ocupacao recebem novos IDs. Os sensores antigos recebem nomes `legado:radar`, `legado:gps` e `legado:ocupacao`, indicando que a identificacao fisica nao era registrada. Em banco vazio, os cadastros sao feitos pelo novo POST.
-
-A migration `20261016010000_sensores_alagamento_qualidade_ar` aplica a mesma separacao as outras APIs: duas leituras por registro antigo de alagamento e quatro por registro de qualidade do ar. Os valores, timestamps, createdAt e estacao sao mantidos. O ID original permanece no nivel e no MP25; as outras medidas recebem novos IDs. Os cadastros gerados recebem nomes `legado:<sensor antigo>:<TIPO>` para preservar a origem e identificar a separacao. O campo textual `sensor` e substituido pelo relacionamento obrigatorio `sensorId`.
-
-Ao atualizar uma instalacao local, execute `npm run db:migrate` e `npm run build` antes de reiniciar as APIs. No Docker, execute novamente `docker compose up --build -d`; o servico `migrate` aplica a nova migration. Os clientes devem passar a cadastrar o sensor e enviar cada medida separadamente.
-
-### Restauracao dos sensores de alagamento
-
-A migration `20261104000000_restaurar_sensores_alagamento` renomeia os tipos `NIVEL` e `CHUVA` para `NIVEL_CORREGO` e `PLUVIOMETRO` e acrescenta `NIVEL_VIA`/`nivelAguaViaCm`. IDs, nomes, leituras e timestamps existentes sao preservados. Clientes devem usar os novos nomes dos tipos no cadastro. Nenhuma migration antiga foi alterada.
-
-Niveis sao medidos em cm a partir de uma referencia fixa de cada ponto. `chuvaAcumuladaMm` representa a precipitacao dos ultimos 60 minutos; leituras de janelas sobrepostas nao devem ser somadas.
-
-Execute `npm run test:alagamento` para verificar os contratos. Com `TEST_DATABASE_URL` definido, o mesmo comando tambem verifica a preservacao de dados da migration em um schema temporario com rollback. Os testes HTTP completos continuam em `npm test`, exigindo um banco de testes com todas as migrations aplicadas.
-
-### Restauracao dos sensores de qualidade do ar
-
-A migration `20261104010000_restaurar_sensores_qualidade_ar` corrige `NO3`/`no3` para `NO2`/`no2` e move `estacao` para `SensorQualidadeAr`. O cadastro exige `nome`, `tipo` e `estacao`, com espacos nas extremidades removidos. Cada leitura envia `sensorId`, `timestamp` e apenas uma medida. As respostas incluem a estacao em `sensor.estacao`. Enviar `no3` ou `estacao` no corpo da leitura retorna HTTP 400.
-
-Os quatro tipos sao `MP25`, `CO`, `NO2` e `TEMPERATURA`. Nos exemplos e simuladores, PM2.5 e NO2 usam µg/m³, CO usa ppm e temperatura usa °C.
-
-A migration preserva IDs das leituras, valores, timestamps e createdAt. Para um sensor com uma unica estacao, mantem tambem seu ID e nome. Se o mesmo sensor tinha leituras de varios locais, a primeira estacao em ordem alfabetica fica com o cadastro original; as demais recebem novos cadastros com sufixo `:estacao:<local>` no nome. As leituras passam a apontar para o cadastro correspondente. Colisoes de nomes recebem `:` adicionais. Sensores sem leituras recebem a estacao `legado:sem-estacao`, pois nao havia local registrado. Nenhuma migration antiga foi alterada.
-
-O simulador de qualidade do ar cadastra ou reutiliza os quatro equipamentos na `estacao-01` e informa conflito de tipo ou estacao. `npm run test:qualidade-ar` compila, verifica tipos e executa os testes dos contratos; com `TEST_DATABASE_URL`, tambem testa a migration em schemas temporarios com rollback, cobrindo banco vazio, varias estacoes e preservacao das outras APIs.
+Os [resultados de 17/10/2026](docs/resultados-testes.md) e o [JSON daquela execução](docs/evidencias-etapa3.json) são evidências históricas da `etapa3-v1`, com configuração de HPA diferente da atual. Eles não substituem a nova demonstração. A disponibilidade das APIs depende de o cluster estar ligado; os testes de aplicação também não substituem as verificações de infraestrutura.
