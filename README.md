@@ -11,6 +11,7 @@ São **três APIs independentes**, com **dez tipos de sensor**, conectadas ao me
 | [API](docs/project/api.md) | Funcionamento, camadas, sensores, banco, rotas, cache e alertas. |
 | [Docker](docs/project/docker.md) | Dockerfiles, estágios de build, imagens e Compose. |
 | [Kubernetes](docs/project/kubernetes.md) | Componentes, configurações, implantação e roteiro de apresentação. |
+| [Desempenho](docs/desempenho.md) | Carga POST nas três APIs, P50/P95/P99, erros, volume e evolução das réplicas. |
 
 Roteiros técnicos: [Kubernetes](docs/kubernetes.md), [sensores](docs/sensores.md), [cache](docs/cache.md) e [fila e alertas](docs/alertas.md).
 
@@ -26,6 +27,7 @@ Roteiros técnicos: [Kubernetes](docs/kubernetes.md), [sensores](docs/sensores.m
 - Dockerfiles em múltiplos estágios e Compose para desenvolvimento.
 - Kubernetes com Ingress, Services, réplicas, probes, recursos, volumes, migrations, Secrets e HPA.
 - Simuladores Python, testes de contratos, camadas, migrations e integrações reais.
+- Coletor Python de carga concorrente, CSVs por execução e gráficos Matplotlib em PNG/PDF.
 
 ## Arquitetura
 
@@ -356,6 +358,33 @@ O [schema](prisma/schema.prisma) contém três modelos de sensores, três de lei
 O histórico de [migrations](prisma/migrations) inclui a separação de sensores, os tipos `NIVEL_CORREGO`, `PLUVIOMETRO` e `NIVEL_VIA`, a correção de `NO3/no3` para `NO2/no2`, a estação no cadastro e a criação aditiva de tarefas/alertas. As migrations antigas permanecem versionadas. As restaurações recentes preservam dados existentes; detalhes dos cadastros legados estão no [guia de sensores](docs/sensores.md).
 
 `npm run db:migrate` aplica migrations pendentes com `prisma migrate deploy`. `npm run db:generate` gera o Client; `npm run build` gera o Client e compila TypeScript. Gerar o Client não aplica alterações nas tabelas. Use as migrations antes de iniciar uma versão que depende da nova estrutura.
+
+## Carga e gráficos de desempenho
+
+O novo coletor envia leituras para as três APIs pelo Ingress, cadastra sensores próprios antes da medição e consulta o Kubernetes somente para observar réplicas e HPA. O perfil padrão dura 30 segundos com concorrência 2 por API. Os dados gerados permanecem identificados no banco.
+
+Com Python 3.9 ou superior, prepare um ambiente virtual e instale as dependências:
+
+~~~sh
+python3 -m venv .venv-desempenho
+source .venv-desempenho/bin/activate
+python -m pip install -r scripts/desempenho/requirements.txt
+python scripts/desempenho/carga.py
+~~~
+
+Depois, use a pasta indicada pelo coletor:
+
+~~~sh
+python scripts/desempenho/graficos.py evidencias/desempenho/ID_DA_EXECUCAO
+~~~
+
+São gerados P50/P95/P99 de respostas válidas, sucessos e falhas por segundo, taxa de erros e réplicas desejadas/prontas, em um PNG por API e PDF consolidado. O perfil progressivo é uma execução separada. A validação curta não comprova capacidade máxima ou crescimento automático. Veja [instalação no Windows, perfis, arquivos e interpretação](docs/desempenho.md).
+
+Para testar os scripts sem cluster:
+
+~~~sh
+python -m unittest discover -s tests -p 'test_desempenho.py' -v
+~~~
 
 ## Testes e verificações
 

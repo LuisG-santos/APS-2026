@@ -17,3 +17,10 @@ Thumbs.db
 /alagamento.csv
 /qualidade-ar.csv
 /transito.csv
+.venv/
+.venv-*/
+venv/
+venv-*/
+env/
+ENV/
+/evidencias/desempenho/
