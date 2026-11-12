@@ -17,10 +17,6 @@ Thumbs.db
 /alagamento.csv
 /qualidade-ar.csv
 /transito.csv
-.venv/
-.venv-*/
-venv/
-venv-*/
-env/
-ENV/
+/.venv-desempenho/
 /evidencias/desempenho/
+.venv/
