@@ -71,7 +71,7 @@ spec:
           preStop:
             exec:
               command: [sh, -c, "sleep 5"]
-        image: aps-transito:etapa3-v5
+        image: aps-transito:etapa4-v1
         imagePullPolicy: IfNotPresent
         ports:
         - name: http
@@ -80,6 +80,8 @@ spec:
         - configMapRef:
             name: aps-config
         env:
+        - name: APP_VERSION
+          value: etapa4-v1
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
