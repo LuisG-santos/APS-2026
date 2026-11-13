@@ -11,16 +11,16 @@ try {
 
     $images = @(
         @{ Tag = 'aps-migrate:etapa3-v5'; Dockerfile = 'api-alagamento-inundacao/Dockerfile'; Target = 'migrate' },
-        @{ Tag = 'aps-alagamento:etapa3-v5'; Dockerfile = 'api-alagamento-inundacao/Dockerfile'; Target = 'runtime' },
-        @{ Tag = 'aps-qualidade-ar:etapa3-v5'; Dockerfile = 'api-qualidade-do-ar/Dockerfile'; Target = 'runtime' },
-        @{ Tag = 'aps-transito:etapa3-v5'; Dockerfile = 'api-transito-e-transporte/Dockerfile'; Target = 'runtime' },
+        @{ Tag = 'aps-alagamento:etapa4-v1'; Dockerfile = 'api-alagamento-inundacao/Dockerfile'; Target = 'runtime' },
+        @{ Tag = 'aps-qualidade-ar:etapa4-v1'; Dockerfile = 'api-qualidade-do-ar/Dockerfile'; Target = 'runtime' },
+        @{ Tag = 'aps-transito:etapa4-v1'; Dockerfile = 'api-transito-e-transporte/Dockerfile'; Target = 'runtime' },
         @{ Tag = 'aps-worker:etapa3-v5.1'; Dockerfile = 'api-alagamento-inundacao/Dockerfile'; Target = 'worker' }
     )
     foreach ($image in $images) {
         & docker build --file $image.Dockerfile --target $image.Target --tag $image.Tag .
         if ($LASTEXITCODE -ne 0) { throw "Falha ao construir $($image.Tag)." }
     }
-    Write-Output 'As cinco imagens da etapa 3 foram construidas. As tags do Compose foram preservadas.'
+    Write-Output 'Imagens construidas: APIs etapa4-v1, migration etapa3-v5 e worker etapa3-v5.1. Tags do Compose preservadas.'
 } finally {
     Pop-Location
 }
