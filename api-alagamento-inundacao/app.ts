@@ -3,6 +3,7 @@ import { createAlertasService } from '../shared/alertas/alertas.service.js'
 import { createAlertasController } from '../shared/alertas/alertas.controller.js'
 import { semCache, type Cache } from '../shared/cache.js'
 import express, { type Express } from 'express'
+import { identificarInstancia } from '../shared/identificacao.js'
 import type { PrismaClient } from '@prisma/client'
 import type { ApiRequest, ApiResponse, LiveResponse, ReadyResponse } from '../shared/http.js'
 import { createSensoresController } from './controllers/sensores.controller.js'
@@ -21,6 +22,7 @@ export function createApp(prisma: PrismaClient, cache: Cache = semCache): Expres
   const leiturasController = createLeiturasController(leiturasService)
 
   const app = express()
+  app.use(identificarInstancia)
   app.use(express.json())
 
   app.get('/health/live', (_req: ApiRequest<LiveResponse>, res: ApiResponse<LiveResponse>): void => {
