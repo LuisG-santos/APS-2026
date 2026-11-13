@@ -86,16 +86,16 @@ O conjunto completo está em `k8s/`. O script [build-imagens.ps1](../../scripts/
 
 | Imagem | Target usado |
 |---|---|
-| `aps-alagamento:etapa3-v5` | `runtime` |
-| `aps-qualidade-ar:etapa3-v5` | `runtime` |
-| `aps-transito:etapa3-v5` | `runtime` |
+| `aps-alagamento:etapa4-v1` | `runtime` |
+| `aps-qualidade-ar:etapa4-v1` | `runtime` |
+| `aps-transito:etapa4-v1` | `runtime` |
 | `aps-migrate:etapa3-v5` | `migrate` |
 | `aps-worker:etapa3-v5.1` | `worker` |
 
 Exemplo de construção de uma API, sempre a partir da raiz:
 
 ```sh
-docker build -f api-alagamento-inundacao/Dockerfile --target runtime -t aps-alagamento:etapa3-v5 .
+docker build -f api-alagamento-inundacao/Dockerfile --target runtime -t aps-alagamento:etapa4-v1 .
 ```
 
 `--target` escolhe o estágio; `-t` define nome e tag. O script produz imagens locais, usadas no Docker Desktop com kubeadm. Em outros ambientes, elas precisam ser carregadas nos nós ou publicadas em um registry acessível.

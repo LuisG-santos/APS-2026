@@ -72,7 +72,7 @@ Mantenha esse terminal aberto e use `http://localhost:8080` com os mesmos prefix
 
 O Job `aps-migrate-etapa3-v5` aplica migrations. InitContainers das APIs e do worker aguardam sua aplicação antes de iniciar os processos principais. A inicialização depende dessas verificações, além da criação dos recursos.
 
-APIs e migrations usam imagens `etapa3-v5`; worker usa `etapa3-v5.1`. Os demais componentes também têm tags fixas nos manifests.
+As APIs usam imagens `etapa4-v1`, com cabeçalhos X-Pod e X-Versao para as medições. Migrations usam `etapa3-v5`; worker usa `etapa3-v5.1`. Os demais componentes também têm tags fixas nos manifests.
 
 ### Como subir em uma máquina preparada
 

@@ -8,7 +8,7 @@ Esta etapa acrescenta a orquestracao das imagens da etapa 2. As APIs, os contrat
 |---|---|
 | Aplicar a pasta com um comando | `kubectl apply -f k8s/`, depois da preparacao das imagens e do Secret local |
 | Um Deployment e um Service por servico, minimo tres | `05-api-alagamento.yaml`, `06-api-qualidade-ar.yaml`, `07-api-transito.yaml` |
-| Imagens de tag fixa | APIs e migration com `:etapa3-v5`, worker com `:etapa3-v5.1`; PostgreSQL `16.14-bookworm`, Traefik `v3.7.15`, metrics-server `v0.9.0` |
+| Imagens de tag fixa | APIs com `:etapa4-v1`, migration com `:etapa3-v5`, worker com `:etapa3-v5.1`; PostgreSQL `16.14-bookworm`, Traefik `v3.7.15`, metrics-server `v0.9.0` |
 | Ingress como entrada unica e roteamento por caminho | `08-gateway.yaml`, classe `aps-traefik`, controller Traefik e tres prefixos |
 | Probes de liveness e readiness distintas | Nas APIs: `/health/live` verifica o processo; `/health/ready` executa `SELECT 1` no banco a cada chamada |
 | Requests e limits de CPU e memoria | Configurados em todos os containers, incluindo initContainers, Job, banco, gateway e metrics-server |
