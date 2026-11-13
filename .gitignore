@@ -19,4 +19,5 @@ Thumbs.db
 /transito.csv
 /.venv-desempenho/
 /evidencias/desempenho/
+/evidencias/base
 .venv/

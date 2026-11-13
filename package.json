@@ -20,11 +20,12 @@
     "test:alagamento": "npm run build && npm run typecheck && node --test tests/alagamento.contracts.test.mjs tests/alagamento.services.test.mjs tests/alagamento.controllers.test.mjs tests/alagamento.migration.test.mjs",
     "test:qualidade-ar": "npm run build && npm run typecheck && node --test tests/qualidade-ar.contracts.test.mjs tests/qualidade-ar.services.test.mjs tests/qualidade-ar.controllers.test.mjs tests/qualidade-ar.migration.test.mjs",
     "test:transito": "npm run build && npm run typecheck && node --test tests/transito.contracts.test.mjs tests/transito.services.test.mjs tests/transito.controllers.test.mjs",
-    "test": "npm run build && npm run typecheck && node --test --test-concurrency=1 tests/transito.contracts.test.mjs tests/transito.services.test.mjs tests/transito.controllers.test.mjs tests/api.test.mjs tests/alagamento.contracts.test.mjs tests/alagamento.services.test.mjs tests/alagamento.controllers.test.mjs tests/alagamento.migration.test.mjs tests/qualidade-ar.contracts.test.mjs tests/qualidade-ar.services.test.mjs tests/qualidade-ar.controllers.test.mjs tests/qualidade-ar.migration.test.mjs tests/cache.test.mjs tests/cache.redis.test.mjs tests/alertas.test.mjs tests/alertas.integration.test.mjs tests/alertas.migration.test.mjs",
+    "test": "npm run build && npm run typecheck && node --test --test-concurrency=1 tests/transito.contracts.test.mjs tests/transito.services.test.mjs tests/transito.controllers.test.mjs tests/api.test.mjs tests/alagamento.contracts.test.mjs tests/alagamento.services.test.mjs tests/alagamento.controllers.test.mjs tests/alagamento.migration.test.mjs tests/qualidade-ar.contracts.test.mjs tests/qualidade-ar.services.test.mjs tests/qualidade-ar.controllers.test.mjs tests/qualidade-ar.migration.test.mjs tests/cache.test.mjs tests/cache.redis.test.mjs tests/alertas.test.mjs tests/alertas.integration.test.mjs tests/alertas.migration.test.mjs tests/identificacao.test.mjs",
     "test:cache": "npm run build && node --test tests/cache.test.mjs tests/cache.redis.test.mjs",
     "dev:worker": "tsx shared/alertas/index.ts",
     "start:worker": "node dist/shared/alertas/index.js",
-    "test:alertas": "npm run build && npm run typecheck && node --test tests/alertas.test.mjs tests/alertas.integration.test.mjs tests/alertas.migration.test.mjs"
+    "test:alertas": "npm run build && npm run typecheck && node --test tests/alertas.test.mjs tests/alertas.integration.test.mjs tests/alertas.migration.test.mjs",
+    "test:desempenho": "python3 -m unittest discover -s tests -p test_desempenho.py -v"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
