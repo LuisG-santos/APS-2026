@@ -11,7 +11,7 @@ São **três APIs independentes**, com **dez tipos de sensor**, conectadas ao me
 | [API](docs/project/api.md) | Funcionamento, camadas, sensores, banco, rotas, cache e alertas. |
 | [Docker](docs/project/docker.md) | Dockerfiles, estágios de build, imagens e Compose. |
 | [Kubernetes](docs/project/kubernetes.md) | Componentes, configurações, implantação e roteiro de apresentação. |
-| [Desempenho](docs/desempenho.md) | Carga POST nas três APIs, P50/P95/P99, erros, volume e evolução das réplicas. |
+| [Desempenho](docs/desempenho.md) | Carga POST/GET, linha de base por degraus, P50/P95/P99, distribuição por pod, recursos e gráficos. |
 
 Roteiros técnicos: [Kubernetes](docs/kubernetes.md), [sensores](docs/sensores.md), [cache](docs/cache.md) e [fila e alertas](docs/alertas.md).
 
@@ -232,9 +232,9 @@ O script constrói cinco imagens do projeto. Elas precisam estar disponíveis ao
 
 | Componente | Imagem | Organização |
 |---|---|---|
-| Alagamento | `aps-alagamento:etapa3-v5` | Deployment + Service; 2–10 réplicas |
-| Qualidade do ar | `aps-qualidade-ar:etapa3-v5` | Deployment + Service; 2–10 réplicas |
-| Trânsito | `aps-transito:etapa3-v5` | Deployment + Service; 2–10 réplicas |
+| Alagamento | `aps-alagamento:etapa4-v1` | Deployment + Service; 2–10 réplicas |
+| Qualidade do ar | `aps-qualidade-ar:etapa4-v1` | Deployment + Service; 2–10 réplicas |
+| Trânsito | `aps-transito:etapa4-v1` | Deployment + Service; 2–10 réplicas |
 | Migrations | `aps-migrate:etapa3-v5` | Job e initContainers de verificação |
 | Worker | `aps-worker:etapa3-v5.1` | Deployment + Service de health; uma réplica |
 | PostgreSQL | `postgres:16.14-bookworm` | StatefulSet + Service + PVC de 1 GiB |
@@ -378,7 +378,22 @@ Depois, use a pasta indicada pelo coletor:
 python scripts/desempenho/graficos.py evidencias/desempenho/ID_DA_EXECUCAO
 ~~~
 
-São gerados P50/P95/P99 de respostas válidas, sucessos e falhas por segundo, taxa de erros e réplicas desejadas/prontas, em um PNG por API e PDF consolidado. O perfil progressivo é uma execução separada. A validação curta não comprova capacidade máxima ou crescimento automático. Veja [instalação no Windows, perfis, arquivos e interpretação](docs/desempenho.md).
+São gerados P50/P95/P99 de respostas válidas, sucessos e falhas por segundo, taxa de erros e réplicas desejadas/prontas, além de gráficos por número de trabalhadores e PDF consolidado. O coletor registra X-Pod/X-Versao, CPU/memória de todos os pods, série por segundo com horário UTC e resumo por degrau/repetição.
+
+O perfil base usa degraus 1, 2, 4, 8, 16, 32 e 64, 25 segundos cada, 5 de aquecimento descartados e três repetições. Exige uma réplica das três APIs, HPA removido e imagens atualizadas com X-Pod; **o script só verifica, não prepara nem altera o cluster**. A medição real de saturação e a conclusão do gargalo continuam necessárias para preencher a ficha. Para o procedimento, veja [linha de base e evidências](docs/desempenho.md#linha-de-base-da-etapa-4).
+
+~~~sh
+# Somente depois de preparar a linha de base conforme o guia:
+python scripts/desempenho/carga.py --api alagamento --perfil base
+# Consulta de sensores, com cadastro estável e cache:
+python scripts/desempenho/carga.py --api alagamento --metodo GET -c 8 -d 20
+# Gerar e copiar evidências escolhidas para uma pasta versionável:
+python scripts/desempenho/graficos.py evidencias/desempenho/ID_DA_EXECUCAO --publicar evidencias/base/ID_DA_EXECUCAO
+~~~
+
+O perfil progressivo continua disponível separadamente, com HPA permitido. A validação curta não comprova capacidade máxima ou crescimento automático. CSVs brutos são preservados e a análise não inventa gargalos: candidatos a degradação são indicativos para revisar as medições. Veja [instalação no Windows, perfis, arquivos e interpretação](docs/desempenho.md).
+
+A [campanha real da Etapa 4, de 13/11/2026](evidencias/base/etapa4-20261113T134526Z/README.md) inclui distribuição por pod, base POST/GET, gráficos, CSVs e evidência de CPU/throttling. Os testes identificaram degradação e reinícios do gateway nos extremos; a análise registra também o efeito da recuperação entre repetições. As APIs estão na imagem etapa4-v1 e os HPAs foram restaurados após a medição.
 
 Para testar os scripts sem cluster:
 
